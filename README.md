@@ -1,61 +1,48 @@
 # LiveFrame
 
-LiveFrame is a minimal desktop app for streamers: music + Twitch chat overlays with live controls for OBS.
+LiveFrame is a desktop app for streamers: music + Twitch chat overlays with live controls for OBS.
 
-## Features
+## What You Get
 
-- Music and chat control tabs in one interface
+- Music and chat controls in one app
 - First-run wizard and pre-stream checklist
 - One-click copy of OBS Browser Source URLs
-- Live visual/theme updates without restarting overlays
-- Dark and light app themes
+- Dark and light theme support
+- Live updates without restarting overlays
 
-## Quick Start (Dev)
+## Download and Run (Windows)
 
-1. Install Node.js 18+.
-2. In the project folder run:
-   - `npm install`
-   - `npm start`
-3. Open `http://localhost:3000`.
+1. Open the latest GitHub Release.
+2. Download the archive with `LiveFrame-win32-x64`.
+3. Extract the archive.
+4. Run `LiveFrame.exe`.
 
-## Desktop Build (Windows)
+No installer is required.
 
-- Run in Electron: `npm run desktop`
-- Build portable app: `npm run pack:win`
-- Output: `dist/LiveFrame-win32-x64/LiveFrame.exe`
+## Important
 
-## End User Launch
-
-1. Download the latest archive from GitHub Releases.
-2. Extract `LiveFrame-win32-x64`.
-3. Run `LiveFrame.exe`.
-
-No installer is required (portable build).
+- You do **not** need Node.js to use the app.
+- Node.js is only needed for development/building by the author.
 
 ## OBS Setup
 
-From the app:
+1. Open `Music` tab in LiveFrame and click copy OBS URL.
+2. Open `Chat` tab and copy OBS URL.
+3. In OBS, add both links as Browser Sources.
 
-1. Open `Music` tab and copy the music overlay URL.
-2. Open `Chat` tab and copy the chat overlay URL.
-3. Add both URLs in OBS as Browser Sources.
+## First Launch Checklist
 
-## Tech Stack
+- Set your YouTube playlist
+- Set your Twitch channel (without `#`)
+- Copy both OBS URLs and paste them into OBS
 
-- Electron
-- Node.js + Express
-- Socket.IO
-- YouTube IFrame API
-- tmi.js (Twitch chat)
+## FAQ
 
-## Scripts
+**Q: Windows shows "Unknown publisher". Is it normal?**  
+A: Yes. Click "More info" and run anyway.
 
-- `npm start` - start local web server
-- `npm run desktop` - run Electron app
-- `npm run pack:win` - build portable Windows app
-- `npm run build:win` - build NSIS installer via electron-builder
+**Q: Do I need to install anything else?**  
+A: No, just extract and run `LiveFrame.exe`.
 
-## Notes
-
-- Local settings file: `liveframe-settings.json`
-- `.gitignore` excludes `node_modules`, `dist`, and local settings files
+**Q: Where are my app settings stored?**  
+A: In `liveframe-settings.json` near the app runtime folder.
