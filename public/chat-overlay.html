@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LiveFrame - Chat Overlay</title>
+    <style>
+      :root {
+        --font-scale: 100%;
+      }
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        font-family: Arial, sans-serif;
+      }
+      .wrap {
+        position: fixed;
+        top: 20px;
+        bottom: 20px;
+        right: 20px;
+        width: min(430px, calc(100vw - 40px));
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .wrap.left {
+        right: auto;
+        left: 20px;
+      }
+      .msg {
+        border-radius: 12px;
+        padding: 10px 12px;
+        font-size: var(--font-scale);
+        line-height: 1.35;
+        animation: rise 0.35s ease-out;
+      }
+      .msg.anim-slide { animation: slide 0.3s ease-out; }
+      .msg.anim-pop { animation: pop 0.3s ease-out; }
+      .msg.anim-none { animation: none; }
+      .msg.mod {
+        box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.65);
+      }
+      .msg.subscriber {
+        box-shadow: inset 0 0 0 1px rgba(244, 114, 182, 0.65);
+      }
+      .msg.vip {
+        box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.75);
+      }
+      .dark .msg {
+        color: #f8fafc;
+        background: rgba(2, 6, 23, 0.8);
+        border: 1px solid rgba(148, 163, 184, 0.28);
+      }
+      .glass .msg {
+        color: #ecfeff;
+        background: rgba(15, 23, 42, 0.58);
+        border: 1px solid rgba(56, 189, 248, 0.38);
+        backdrop-filter: blur(6px);
+      }
+      .light .msg {
+        color: #0f172a;
+        background: rgba(248, 250, 252, 0.86);
+        border: 1px solid rgba(15, 23, 42, 0.14);
+      }
+      .meta {
+        margin-bottom: 4px;
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 0.75em;
+        opacity: 0.8;
+      }
+      .user {
+        font-weight: 700;
+      }
+      .text {
+        word-break: break-word;
+      }
+      .status {
+        position: fixed;
+        left: 12px;
+        top: 12px;
+        background: rgba(15, 23, 42, 0.8);
+        color: #cbd5e1;
+        border: 1px solid rgba(100, 116, 139, 0.35);
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+      @keyframes rise {
+        from { opacity: 0; transform: translateY(5px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes slide {
+        from { opacity: 0; transform: translateX(8px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes pop {
+        from { opacity: 0; transform: scale(0.96); }
+        to { opacity: 1; transform: scale(1); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status" class="status">Chat overlay: waiting config...</div>
+    <div id="wrap" class="wrap dark"></div>
+
+    <script src="https://unpkg.com/tmi.js@1.8.5/dist/tmi.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const wrap = document.getElementById("wrap");
+      const statusEl = document.getElementById("status");
+      const params = new URLSearchParams(location.search);
+
+      let client = null;
+      let currentChannel = "";
+      let state = {
+        channel: (params.get("channel") || "").replace(/^#/, "").toLowerCase(),
+        maxMessages: Math.max(3, Math.min(25, Number(params.get("max")) || 8)),
+        position: params.get("position") === "left" ? "left" : "right",
+        theme: ["dark", "glass", "light"].includes(params.get("theme")) ? params.get("theme") : "dark",
+        fontScale: Math.max(80, Math.min(180, Number(params.get("fontScale")) || 100)),
+        showTime: params.get("showTime") === "0" ? false : true,
+        hideCommands: params.get("hideCommands") === "1",
+        fadeSec: Math.max(0, Math.min(120, Number(params.get("fadeSec")) || 0)),
+        blockedWords: decodeURIComponent(params.get("blockedWords") || ""),
+        hideLinks: params.get("hideLinks") === "1",
+        animation: ["rise", "slide", "pop", "none"].includes(params.get("animation")) ? params.get("animation") : "rise",
+        minLength: Math.max(1, Math.min(120, Number(params.get("minLength")) || 1)),
+        maxLength: Math.max(10, Math.min(500, Number(params.get("maxLength")) || 280))
+      };
+
+      function escapeHtml(input) {
+        return String(input)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function applyUiState() {
+        wrap.className = `wrap ${state.position === "left" ? "left" : ""} ${state.theme}`.trim();
+        document.documentElement.style.setProperty("--font-scale", `${state.fontScale}%`);
+      }
+
+      function addMessage(message) {
+        const textRaw = String(message.text || "");
+        if (textRaw.length < state.minLength || textRaw.length > state.maxLength) {
+          return;
+        }
+        if (state.hideCommands && textRaw.trim().startsWith("!")) {
+          return;
+        }
+        if (state.hideLinks && /(https?:\/\/|www\.)/i.test(textRaw)) {
+          return;
+        }
+        const blockList = String(state.blockedWords || "")
+          .split(",")
+          .map((w) => w.trim().toLowerCase())
+          .filter(Boolean);
+        const lower = textRaw.toLowerCase();
+        if (blockList.some((bad) => lower.includes(bad))) {
+          return;
+        }
+
+        const msg = document.createElement("div");
+        msg.className = "msg";
+        msg.classList.add(`anim-${state.animation}`);
+        if (message.role === "mod") msg.classList.add("mod");
+        if (message.role === "subscriber") msg.classList.add("subscriber");
+        if (message.role === "vip") msg.classList.add("vip");
+        const time = new Date(message.ts || Date.now());
+        const timeLabel = `${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}`;
+
+        msg.innerHTML = `
+          <div class="meta">
+            <span class="user" style="color:${escapeHtml(message.color || "#93c5fd")}">${escapeHtml(message.user || "viewer")}</span>
+            ${state.showTime ? `<span>${timeLabel}</span>` : ""}
+          </div>
+          <div class="text">${escapeHtml(textRaw)}</div>
+        `;
+        wrap.appendChild(msg);
+
+        if (state.fadeSec > 0) {
+          const fadeMs = state.fadeSec * 1000;
+          setTimeout(() => {
+            msg.style.transition = "opacity 0.3s ease";
+            msg.style.opacity = "0";
+            setTimeout(() => {
+              if (msg.parentNode === wrap) wrap.removeChild(msg);
+            }, 320);
+          }, fadeMs);
+        }
+
+        while (wrap.childElementCount > state.maxMessages) {
+          wrap.removeChild(wrap.firstElementChild);
+        }
+      }
+
+      async function connectTwitchChannel(channel) {
+        if (!channel) {
+          statusEl.textContent = "Chat overlay: укажи channel";
+          return;
+        }
+        if (client) {
+          try { await client.disconnect(); } catch {}
+          client = null;
+        }
+
+        currentChannel = channel;
+        statusEl.textContent = `Chat overlay: connecting #${channel}...`;
+
+        client = new tmi.Client({
+          connection: { reconnect: true, secure: true },
+          channels: [channel]
+        });
+
+        client.on("message", (_channel, tags, text) => {
+          let role = "";
+          if (tags && tags.badges && tags.badges.vip) role = "vip";
+          else if (tags && tags.mod) role = "mod";
+          else if (tags && tags.subscriber) role = "subscriber";
+          addMessage({
+            user: tags["display-name"] || tags.username || "viewer",
+            text,
+            color: tags.color || "#93c5fd",
+            ts: Date.now(),
+            source: "twitch",
+            role
+          });
+        });
+
+        client.on("connected", () => {
+          statusEl.textContent = `Chat overlay: #${channel}`;
+        });
+
+        try {
+          await client.connect();
+        } catch {
+          statusEl.textContent = "Chat overlay: не удалось подключиться";
+        }
+      }
+
+      function applyState(next) {
+        state = { ...state, ...next };
+        applyUiState();
+        if (state.channel && state.channel !== currentChannel) {
+          connectTwitchChannel(state.channel);
+        }
+      }
+
+      socket.on("chat:state", (s) => {
+        if (!s) return;
+        applyState({
+          channel: s.channel || state.channel,
+          maxMessages: s.maxMessages ?? state.maxMessages,
+          position: s.position ?? state.position,
+          theme: s.theme ?? state.theme,
+          fontScale: s.fontScale ?? state.fontScale,
+          showTime: typeof s.showTime === "boolean" ? s.showTime : state.showTime,
+          hideCommands: typeof s.hideCommands === "boolean" ? s.hideCommands : state.hideCommands,
+          fadeSec: s.fadeSec ?? state.fadeSec,
+          blockedWords: s.blockedWords ?? state.blockedWords,
+          hideLinks: typeof s.hideLinks === "boolean" ? s.hideLinks : state.hideLinks,
+          animation: s.animation ?? state.animation,
+          minLength: s.minLength ?? state.minLength,
+          maxLength: s.maxLength ?? state.maxLength
+        });
+      });
+
+      socket.on("chat:message", (m) => addMessage(m || {}));
+
+      applyUiState();
+      if (state.channel) {
+        connectTwitchChannel(state.channel);
+      } else {
+        statusEl.textContent = "Chat overlay: waiting channel...";
+      }
+    </script>
+  </body>
+</html>

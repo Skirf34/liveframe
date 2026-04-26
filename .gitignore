@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# Build / packaging
+dist/
+out/
+release/
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.zip
+*.7z
+
+# Local app data (passwords, playlist state, etc. — do not commit)
+streamer-settings.json
+liveframe-settings.json
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Logs & debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE (optional; uncomment if you do not want IDE config in the repo)
+# .vscode/
+# .idea/
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Misc
+*.swp
+*.swo
+*~

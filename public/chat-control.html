@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LiveFrame - Чат</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --text: #f8fafc;
+        --card: #111827;
+        --border: #334155;
+        --input-bg: #020617;
+        --muted: #94a3b8;
+      }
+      body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: var(--text); transition: background 0.25s ease, color 0.25s ease; }
+      .wrap { max-width: 820px; margin: 0 auto; padding: 24px; }
+      .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; transition: background 0.25s ease, border-color 0.25s ease; }
+      label { display: block; margin-top: 10px; color: var(--muted); }
+      input, select, button {
+        width: 100%; margin-top: 8px; margin-bottom: 8px; border-radius: 8px; border: 1px solid var(--border);
+        padding: 10px; font-size: 16px; box-sizing: border-box;
+      }
+      input, select { background: var(--input-bg); color: var(--text); transition: background 0.25s ease, border-color 0.25s ease; }
+      button { background: #1d4ed8; color: #fff; cursor: pointer; transition: background 0.2s ease; }
+      button:hover { background: #2563eb; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .tiny { color: var(--muted); font-size: 14px; }
+      .toast {
+        position: fixed; right: 18px; bottom: 18px; background: rgba(34, 197, 94, 0.95); color: #052e16;
+        font-weight: 700; font-size: 12px; border-radius: 999px; padding: 8px 12px; opacity: 0;
+        transform: translateY(8px); transition: opacity 0.2s ease, transform 0.2s ease; pointer-events: none;
+      }
+      .toast.show { opacity: 1; transform: translateY(0); }
+      @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1 id="chatTitle">Чат стрима</h1>
+      <div class="card">
+        <label>Канал Twitch (без #)</label>
+        <input id="channel" placeholder="например: ninja" />
+
+        <div class="grid">
+          <div>
+            <label>Сообщений на экране</label>
+            <input id="maxMessages" type="number" min="3" max="25" value="8" />
+          </div>
+          <div>
+            <label>Позиция</label>
+            <select id="position">
+              <option value="right">Справа</option>
+              <option value="left">Слева</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div>
+            <label>Тема</label>
+            <select id="theme">
+              <option value="dark">Темная</option>
+              <option value="glass">Стекло</option>
+              <option value="light">Светлая</option>
+            </select>
+          </div>
+          <div>
+            <label>Размер шрифта (%)</label>
+            <input id="fontScale" type="number" min="80" max="180" value="100" />
+          </div>
+        </div>
+
+        <label>Показывать время сообщения</label>
+        <select id="showTime">
+          <option value="1">Да</option>
+          <option value="0">Нет</option>
+        </select>
+
+        <div class="grid">
+          <div>
+            <label>Скрывать команды (!...)</label>
+            <select id="hideCommands">
+              <option value="0">Нет</option>
+              <option value="1">Да</option>
+            </select>
+          </div>
+          <div>
+            <label>Авто-исчезновение сообщения (сек, 0 = выкл)</label>
+            <input id="fadeSec" type="number" min="0" max="120" value="0" />
+          </div>
+        </div>
+
+        <label>Слова для фильтра (через запятую)</label>
+        <input id="blockedWords" placeholder="пример: badword1,badword2" />
+
+        <div class="grid">
+          <div>
+            <label>Скрывать ссылки</label>
+            <select id="hideLinks">
+              <option value="0">Нет</option>
+              <option value="1">Да</option>
+            </select>
+          </div>
+          <div>
+            <label>Анимация появления</label>
+            <select id="animation">
+              <option value="rise">Rise</option>
+              <option value="slide">Slide</option>
+              <option value="pop">Pop</option>
+              <option value="none" selected>Без анимации</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div>
+            <label>Мин. длина сообщения</label>
+            <input id="minLength" type="number" min="1" max="120" value="1" />
+          </div>
+          <div>
+            <label>Макс. длина сообщения</label>
+            <input id="maxLength" type="number" min="10" max="500" value="280" />
+          </div>
+        </div>
+
+        <button id="copyOverlay">Скопировать путь для OBS</button>
+        <button id="applyLive">Применить настройки в оверлее</button>
+        <button id="sendTest">Отправить тест-сообщение</button>
+
+        <p class="tiny">Подсказка: скопируй URL и вставь в OBS Browser Source.</p>
+      </div>
+    </div>
+    <div id="toast" class="toast">СКОПИРОВАНО!</div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const channelInput = document.getElementById("channel");
+      const maxMessagesInput = document.getElementById("maxMessages");
+      const positionInput = document.getElementById("position");
+      const themeInput = document.getElementById("theme");
+      const fontScaleInput = document.getElementById("fontScale");
+      const showTimeInput = document.getElementById("showTime");
+      const hideCommandsInput = document.getElementById("hideCommands");
+      const fadeSecInput = document.getElementById("fadeSec");
+      const blockedWordsInput = document.getElementById("blockedWords");
+      const hideLinksInput = document.getElementById("hideLinks");
+      const animationInput = document.getElementById("animation");
+      const minLengthInput = document.getElementById("minLength");
+      const maxLengthInput = document.getElementById("maxLength");
+      const toast = document.getElementById("toast");
+      let toastTimer = null;
+
+      function showToast(text) {
+        toast.textContent = text;
+        toast.classList.add("show");
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove("show"), 1200);
+      }
+
+      function gatherConfig() {
+        const channel = String(channelInput.value || "").trim().replace(/^#/, "").toLowerCase();
+        const maxMessages = Math.max(3, Math.min(25, Number(maxMessagesInput.value) || 8));
+        const position = positionInput.value === "left" ? "left" : "right";
+        const theme = ["dark", "glass", "light"].includes(themeInput.value) ? themeInput.value : "dark";
+        const fontScale = Math.max(80, Math.min(180, Number(fontScaleInput.value) || 100));
+        const showTime = showTimeInput.value === "1";
+        const hideCommands = hideCommandsInput.value === "1";
+        const fadeSec = Math.max(0, Math.min(120, Number(fadeSecInput.value) || 0));
+        const blockedWords = String(blockedWordsInput.value || "").slice(0, 500);
+        const hideLinks = hideLinksInput.value === "1";
+        const animation = ["rise", "slide", "pop", "none"].includes(animationInput.value) ? animationInput.value : "rise";
+        let minLength = Math.max(1, Math.min(120, Number(minLengthInput.value) || 1));
+        let maxLength = Math.max(10, Math.min(500, Number(maxLengthInput.value) || 280));
+        if (minLength > maxLength) {
+          const t = minLength;
+          minLength = maxLength;
+          maxLength = t;
+        }
+        return { channel, maxMessages, position, theme, fontScale, showTime, hideCommands, fadeSec, blockedWords, hideLinks, animation, minLength, maxLength };
+      }
+
+      function buildUrl(cfg) {
+        return `${location.origin}/chat-overlay.html?channel=${encodeURIComponent(cfg.channel)}&max=${cfg.maxMessages}&position=${cfg.position}&theme=${cfg.theme}&fontScale=${cfg.fontScale}&showTime=${cfg.showTime ? "1" : "0"}&hideCommands=${cfg.hideCommands ? "1" : "0"}&fadeSec=${cfg.fadeSec}&blockedWords=${encodeURIComponent(cfg.blockedWords)}&hideLinks=${cfg.hideLinks ? "1" : "0"}&animation=${cfg.animation}&minLength=${cfg.minLength}&maxLength=${cfg.maxLength}`;
+      }
+
+      document.getElementById("copyOverlay").addEventListener("click", async () => {
+        const cfg = gatherConfig();
+        if (!cfg.channel) {
+          alert("Укажи канал Twitch.");
+          return;
+        }
+        socket.emit("chat:configure", cfg);
+        const url = buildUrl(cfg);
+        try {
+          await navigator.clipboard.writeText(url);
+        } catch {
+          const tmp = document.createElement("input");
+          tmp.value = url;
+          document.body.appendChild(tmp);
+          tmp.select();
+          document.execCommand("copy");
+          document.body.removeChild(tmp);
+        }
+        localStorage.setItem("obsCopiedChat", "1");
+        showToast("СКОПИРОВАНО!");
+      });
+
+      document.getElementById("applyLive").addEventListener("click", () => {
+        const cfg = gatherConfig();
+        if (!cfg.channel) {
+          alert("Укажи канал Twitch.");
+          return;
+        }
+        socket.emit("chat:configure", cfg);
+        showToast("ПРИМЕНЕНО");
+      });
+
+      document.getElementById("sendTest").addEventListener("click", () => {
+        socket.emit("chat:test-message", { user: "stream-admin", text: "Тест: чат-виджет активен" });
+      });
+
+      socket.on("chat:state", (s) => {
+        if (!s) return;
+        channelInput.value = s.channel || channelInput.value;
+        maxMessagesInput.value = s.maxMessages ?? maxMessagesInput.value;
+        positionInput.value = s.position === "left" ? "left" : "right";
+        themeInput.value = ["dark", "glass", "light"].includes(s.theme) ? s.theme : "dark";
+        fontScaleInput.value = s.fontScale ?? fontScaleInput.value;
+        showTimeInput.value = s.showTime ? "1" : "0";
+        hideCommandsInput.value = s.hideCommands ? "1" : "0";
+        fadeSecInput.value = s.fadeSec ?? fadeSecInput.value;
+        blockedWordsInput.value = s.blockedWords ?? blockedWordsInput.value;
+        hideLinksInput.value = s.hideLinks ? "1" : "0";
+        animationInput.value = ["rise", "slide", "pop", "none"].includes(s.animation) ? s.animation : "rise";
+        minLengthInput.value = s.minLength ?? minLengthInput.value;
+        maxLengthInput.value = s.maxLength ?? maxLengthInput.value;
+      });
+
+      const lang = localStorage.getItem("appLanguage") || "ru";
+      if (lang === "en") {
+        document.title = "LiveFrame - Chat";
+        document.getElementById("chatTitle").textContent = "Stream chat";
+        document.getElementById("copyOverlay").textContent = "Copy OBS URL";
+        document.getElementById("applyLive").textContent = "Apply to overlay";
+        document.getElementById("sendTest").textContent = "Send test message";
+      }
+      function applyTheme() {
+        const theme = localStorage.getItem("appTheme") || "dark";
+        if (theme === "light") {
+          document.documentElement.style.setProperty("--bg", "#eef2f7");
+          document.documentElement.style.setProperty("--text", "#111827");
+          document.documentElement.style.setProperty("--card", "#ffffff");
+          document.documentElement.style.setProperty("--border", "#d1d5db");
+          document.documentElement.style.setProperty("--input-bg", "#ffffff");
+          document.documentElement.style.setProperty("--muted", "#475569");
+        }
+      }
+      applyTheme();
+    </script>
+  </body>
+</html>

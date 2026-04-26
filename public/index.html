@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LiveFrame</title>
+    <style>
+      :root {
+        --bg: #111827;
+        --text: #f9fafb;
+        --topbar: #0b1220;
+        --border: #374151;
+        --btn-bg: #111827;
+        --btn-text: #e5e7eb;
+        --btn-active: #2563eb;
+        --btn-active-border: #3b82f6;
+        --frame-bg: #0f172a;
+        --modal-backdrop: rgba(2, 6, 23, 0.66);
+        --modal-bg: #0f172a;
+        --input-bg: #020617;
+      }
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        height: 100vh;
+        overflow: hidden;
+        transition: background 0.25s ease, color 0.25s ease;
+      }
+      .topbar {
+        height: 56px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 0 12px;
+        background: var(--topbar);
+        gap: 8px;
+        transition: background 0.25s ease, border-color 0.25s ease;
+      }
+      .tabs {
+        display: flex;
+        gap: 8px;
+      }
+      .tab-btn,
+      .tool-btn {
+        background: var(--btn-bg);
+        color: var(--btn-text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.22s ease, border-color 0.22s ease, color 0.22s ease;
+      }
+      .tab-btn.active {
+        background: var(--btn-active);
+        border-color: var(--btn-active-border);
+        color: #fff;
+      }
+      .tool-btn {
+        margin-left: auto;
+        font-size: 13px;
+      }
+      #viewFrame {
+        width: 100%;
+        height: calc(100vh - 56px);
+        border: none;
+        background: var(--frame-bg);
+      }
+      .modal-backdrop {
+        position: fixed; inset: 0; background: var(--modal-backdrop);
+        display: none; align-items: center; justify-content: center; z-index: 1000;
+        transition: background 0.25s ease;
+      }
+      .modal-backdrop.show { display: flex; }
+      .modal {
+        width: min(640px, calc(100vw - 24px));
+        background: var(--modal-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+        transition: background 0.25s ease, border-color 0.25s ease;
+      }
+      .modal h3 { margin: 0 0 10px; }
+      .field { margin-bottom: 10px; }
+      .field label { display: block; font-size: 13px; color: #cbd5e1; margin-bottom: 6px; }
+      .field input { width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text); padding: 10px; transition: background 0.25s ease, border-color 0.25s ease; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .checklist-item {
+        margin: 8px 0; background: var(--btn-bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 14px;
+        transition: background 0.25s ease, border-color 0.25s ease;
+      }
+      .ok { color: #22c55e; }
+      .warn { color: #f59e0b; }
+      .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+      .actions button {
+        border-radius: 8px; border: 1px solid var(--border); background: #1d4ed8; color: #fff; padding: 8px 10px; cursor: pointer;
+      }
+      .actions .secondary { background: var(--btn-bg); }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="tabs">
+        <button id="tabMusic" class="tab-btn active">Музыка</button>
+        <button id="tabChat" class="tab-btn">Чат</button>
+      </div>
+      <button id="openChecklist" class="tool-btn">Чеклист перед стримом</button>
+      <button id="themeToggle" class="tool-btn">🌙</button>
+    </div>
+    <iframe id="viewFrame" src="/playlist-control.html"></iframe>
+    <div id="wizardBackdrop" class="modal-backdrop">
+      <div class="modal">
+        <h3>Быстрый старт LiveFrame</h3>
+        <div class="field">
+          <label>Канал Twitch (без #)</label>
+          <input id="wizardChannel" placeholder="например: yourchannel" />
+        </div>
+        <div class="field">
+          <label>YouTube Playlist URL</label>
+          <input id="wizardPlaylist" placeholder="https://www.youtube.com/playlist?list=..." />
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Громкость</label>
+            <input id="wizardVolume" type="number" min="0" max="100" value="40" />
+          </div>
+          <div class="field">
+            <label>Сообщений в чате</label>
+            <input id="wizardChatCount" type="number" min="3" max="25" value="8" />
+          </div>
+        </div>
+        <div class="actions">
+          <button id="wizardSkip" class="secondary">Пропустить</button>
+          <button id="wizardApply">Применить и продолжить</button>
+        </div>
+      </div>
+    </div>
+    <div id="checklistBackdrop" class="modal-backdrop">
+      <div class="modal">
+        <h3>Проверка перед эфиром</h3>
+        <div id="check1" class="checklist-item warn">1) Музыка: playlist не задан</div>
+        <div id="check2" class="checklist-item warn">2) Чат: канал не задан</div>
+        <div id="check3" class="checklist-item warn">3) OBS: URL еще не скопированы</div>
+        <div class="actions">
+          <button id="checkClose" class="secondary">Закрыть</button>
+          <button id="checkRefresh">Обновить</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const frame = document.getElementById("viewFrame");
+      const tabMusic = document.getElementById("tabMusic");
+      const tabChat = document.getElementById("tabChat");
+      const openChecklist = document.getElementById("openChecklist");
+      const themeToggle = document.getElementById("themeToggle");
+      function applyTheme(theme) {
+        const dark = theme !== "light";
+        if (dark) {
+          document.documentElement.style.setProperty("--bg", "#111827");
+          document.documentElement.style.setProperty("--text", "#f9fafb");
+          document.documentElement.style.setProperty("--topbar", "#0b1220");
+          document.documentElement.style.setProperty("--border", "#374151");
+          document.documentElement.style.setProperty("--btn-bg", "#111827");
+          document.documentElement.style.setProperty("--btn-text", "#e5e7eb");
+          document.documentElement.style.setProperty("--btn-active", "#2563eb");
+          document.documentElement.style.setProperty("--btn-active-border", "#3b82f6");
+          document.documentElement.style.setProperty("--frame-bg", "#0f172a");
+          document.documentElement.style.setProperty("--modal-backdrop", "rgba(2, 6, 23, 0.66)");
+          document.documentElement.style.setProperty("--modal-bg", "#0f172a");
+          document.documentElement.style.setProperty("--input-bg", "#020617");
+          themeToggle.textContent = "🌙";
+        } else {
+          document.documentElement.style.setProperty("--bg", "#f3f4f6");
+          document.documentElement.style.setProperty("--text", "#0f172a");
+          document.documentElement.style.setProperty("--topbar", "#ffffff");
+          document.documentElement.style.setProperty("--border", "#d1d5db");
+          document.documentElement.style.setProperty("--btn-bg", "#ffffff");
+          document.documentElement.style.setProperty("--btn-text", "#111827");
+          document.documentElement.style.setProperty("--btn-active", "#2563eb");
+          document.documentElement.style.setProperty("--btn-active-border", "#2563eb");
+          document.documentElement.style.setProperty("--frame-bg", "#e5e7eb");
+          document.documentElement.style.setProperty("--modal-backdrop", "rgba(148, 163, 184, 0.44)");
+          document.documentElement.style.setProperty("--modal-bg", "#ffffff");
+          document.documentElement.style.setProperty("--input-bg", "#ffffff");
+          themeToggle.textContent = "☀️";
+        }
+      }
+
+      themeToggle.addEventListener("click", () => {
+        const current = localStorage.getItem("appTheme") || "dark";
+        const next = current === "dark" ? "light" : "dark";
+        localStorage.setItem("appTheme", next);
+        applyTheme(next);
+        frame.src = frame.src;
+      });
+      const tabs = [tabMusic, tabChat];
+      let playlistState = null;
+      let chatState = null;
+
+      function setActive(tab) {
+        tabs.forEach((el) => el.classList.remove("active"));
+        if (tab) tab.classList.add("active");
+      }
+
+      tabMusic.addEventListener("click", () => {
+        frame.src = "/playlist-control.html";
+        setActive(tabMusic);
+      });
+      tabChat.addEventListener("click", () => {
+        frame.src = "/chat-control.html";
+        setActive(tabChat);
+      });
+      openChecklist.addEventListener("click", () => {
+        document.getElementById("checklistBackdrop").classList.add("show");
+        refreshChecklist();
+      });
+
+      function closeBackdrop(id) {
+        document.getElementById(id).classList.remove("show");
+      }
+      document.getElementById("wizardSkip").addEventListener("click", () => {
+        localStorage.setItem("wizardDone", "1");
+        closeBackdrop("wizardBackdrop");
+      });
+      document.getElementById("wizardApply").addEventListener("click", () => {
+        const channel = String(document.getElementById("wizardChannel").value || "").trim().replace(/^#/, "").toLowerCase();
+        const playlistInput = String(document.getElementById("wizardPlaylist").value || "").trim();
+        const volume = Math.max(0, Math.min(100, Number(document.getElementById("wizardVolume").value) || 40));
+        const maxMessages = Math.max(3, Math.min(25, Number(document.getElementById("wizardChatCount").value) || 8));
+        let list = playlistInput;
+        try {
+          const u = new URL(playlistInput);
+          list = u.searchParams.get("list") || playlistInput;
+        } catch {}
+        if (list) {
+          socket.emit("playlist:configure", { list, volume });
+          localStorage.setItem("obsCopiedMusic", "0");
+        }
+        if (channel) {
+          socket.emit("chat:configure", { channel, maxMessages });
+          localStorage.setItem("obsCopiedChat", "0");
+        }
+        localStorage.setItem("wizardDone", "1");
+        closeBackdrop("wizardBackdrop");
+      });
+
+      document.getElementById("checkClose").addEventListener("click", () => closeBackdrop("checklistBackdrop"));
+      document.getElementById("checkRefresh").addEventListener("click", refreshChecklist);
+
+      function refreshChecklist() {
+        const c1 = document.getElementById("check1");
+        const c2 = document.getElementById("check2");
+        const c3 = document.getElementById("check3");
+        const hasPlaylist = Boolean(playlistState && playlistState.list);
+        const hasChannel = Boolean(chatState && chatState.channel);
+        const copiedMusic = localStorage.getItem("obsCopiedMusic") === "1";
+        const copiedChat = localStorage.getItem("obsCopiedChat") === "1";
+        c1.textContent = hasPlaylist ? "1) Музыка: playlist готов" : "1) Музыка: playlist не задан";
+        c1.className = `checklist-item ${hasPlaylist ? "ok" : "warn"}`;
+        c2.textContent = hasChannel ? "2) Чат: канал готов" : "2) Чат: канал не задан";
+        c2.className = `checklist-item ${hasChannel ? "ok" : "warn"}`;
+        const hasObs = copiedMusic && copiedChat;
+        c3.textContent = hasObs ? "3) OBS: ссылки скопированы" : "3) OBS: скопируй URL из вкладок Музыка и Чат";
+        c3.className = `checklist-item ${hasObs ? "ok" : "warn"}`;
+      }
+
+      socket.on("playlist:state", (s) => { playlistState = s; });
+      socket.on("chat:state", (s) => { chatState = s; });
+
+      const lang = localStorage.getItem("appLanguage") || "ru";
+      if (lang === "en") {
+        document.title = "LiveFrame";
+        tabMusic.textContent = "Music";
+        tabChat.textContent = "Chat";
+        openChecklist.textContent = "Pre-stream checklist";
+      }
+      applyTheme(localStorage.getItem("appTheme") || "dark");
+
+      if (localStorage.getItem("wizardDone") !== "1") {
+        document.getElementById("wizardBackdrop").classList.add("show");
+      }
+    </script>
+  </body>
+</html>

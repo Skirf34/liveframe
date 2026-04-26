@@ -1,0 +1,46 @@
+{
+  "name": "liveframe-app",
+  "version": "1.0.0",
+  "description": "LiveFrame desktop app with music and chat overlays",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "node server.js",
+    "desktop": "electron .",
+    "build:win": "electron-builder --win nsis",
+    "pack:win": "electron-packager . LiveFrame --platform=win32 --arch=x64 --out=dist --overwrite"
+  },
+  "keywords": [
+    "twitch",
+    "stream",
+    "interactive",
+    "voting",
+    "obs"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "electron": "^37.1.0",
+    "electron-builder": "^24.13.3",
+    "electron-packager": "^17.1.2"
+  },
+  "build": {
+    "appId": "com.liveframe.desktop",
+    "productName": "LiveFrame",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron-main.js",
+      "server.js",
+      "public/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  }
+}

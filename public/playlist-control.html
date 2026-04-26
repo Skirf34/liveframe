@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LiveFrame - Музыка</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --text: #f8fafc;
+        --card: rgba(15, 23, 42, 0.72);
+        --border: #334155;
+        --input-bg: #020617;
+        --muted: #94a3b8;
+      }
+      body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: var(--text); transition: background 0.25s ease, color 0.25s ease; }
+      .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 14px; }
+      .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; transition: background 0.25s ease, border-color 0.25s ease; }
+      h1 { margin: 0 0 12px; }
+      .label { display: block; margin-top: 10px; color: var(--muted); font-size: 14px; }
+      input, select, button {
+        width: 100%; margin-top: 6px; margin-bottom: 8px; border-radius: 10px; border: 1px solid var(--border);
+        padding: 10px; box-sizing: border-box; font-size: 15px;
+      }
+      input, select { background: var(--input-bg); color: var(--text); transition: background 0.25s ease, border-color 0.25s ease; }
+      button { background: #1d4ed8; color: #fff; cursor: pointer; border: none; transition: background 0.2s ease; }
+      button:hover { background: #2563eb; }
+      .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .mini-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+      .mini-btn { padding: 9px 6px; font-size: 13px; border-radius: 10px; background: transparent; border: 1px solid var(--border); color: var(--text); }
+      .subtle { color: var(--muted); font-size: 13px; }
+      .preview-shell {
+        --preview-scale: 0.62;
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #000;
+        overflow: hidden;
+      }
+      .preview {
+        position: absolute;
+        inset: 0;
+        border: 0;
+        background: #000;
+        width: calc(100% / var(--preview-scale));
+        height: calc(100% / var(--preview-scale));
+        transform: scale(var(--preview-scale));
+        transform-origin: top left;
+        pointer-events: none;
+      }
+      .stat {
+        margin-top: 10px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-size: 12px; color: var(--muted);
+        word-break: break-all;
+        max-height: 84px;
+        overflow: auto;
+      }
+      .copy-toast {
+        position: fixed; right: 18px; bottom: 18px; background: rgba(34, 197, 94, 0.95); color: #052e16;
+        font-weight: 700; font-size: 12px; border-radius: 999px; padding: 8px 12px; opacity: 0; transform: translateY(8px);
+        pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease;
+      }
+      .copy-toast.show { opacity: 1; transform: translateY(0); }
+      @media (max-width: 980px) { .wrap { grid-template-columns: 1fr; } .mini-row { grid-template-columns: 1fr 1fr; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1 id="pageTitle">Музыкальный пульт</h1>
+        <div class="row2">
+          <div>
+            <span class="label">YouTube playlist</span>
+            <input id="playlistUrl" placeholder="https://www.youtube.com/playlist?list=..." />
+          </div>
+          <div>
+            <span class="label">Громкость (0-100)</span>
+            <input id="volume" type="number" min="0" max="100" value="40" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <span class="label">Визуальный режим</span>
+            <select id="visualPreset">
+              <option value="pro">LiveFrame Pro</option>
+              <option value="clean">Clean Minimal</option>
+            </select>
+          </div>
+          <div>
+            <span class="label">Тема</span>
+            <select id="theme">
+              <option value="blue">Синий неон</option>
+              <option value="purple">Фиолетовый</option>
+              <option value="green">Кибер-зеленый</option>
+              <option value="red">Красный</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <span class="label">Вид виджета</span>
+            <select id="mode">
+              <option value="full">Полный</option>
+              <option value="minimal">Минимал</option>
+            </select>
+          </div>
+          <div>
+            <span class="label">Позиция</span>
+            <select id="position">
+              <option value="bottom">Снизу</option>
+              <option value="top">Сверху</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <span class="label">Shuffle</span>
+            <select id="shuffle"><option value="on">Вкл</option><option value="off">Выкл</option></select>
+          </div>
+          <div>
+            <span class="label">Прозрачность</span>
+            <input id="opacity" type="number" min="20" max="95" value="75" />
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <span class="label">Показывать мета-инфо</span>
+            <select id="showMeta"><option value="1">Да</option><option value="0">Нет</option></select>
+          </div>
+          <div>
+            <span class="label">Служебная плашка</span>
+            <select id="showNotice"><option value="0">Нет</option><option value="1">Да</option></select>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <span class="label">Автоскрытие (сек)</span>
+            <input id="autoHideSec" type="number" min="0" max="30" value="0" />
+          </div>
+          <div>
+            <span class="label">Бейдж Now Playing</span>
+            <select id="compactBadge"><option value="1">Да</option><option value="0">Нет</option></select>
+          </div>
+        </div>
+
+        <div class="mini-row">
+          <button class="mini-btn" id="cmdTogglePlay">Play/Pause</button>
+          <button class="mini-btn" id="cmdPrev">Prev</button>
+          <button class="mini-btn" id="cmdNext">Next</button>
+          <button class="mini-btn" id="cmdShow">Show</button>
+        </div>
+
+        <button id="copyOverlayUrl">Скопировать путь для OBS</button>
+        <button id="applyLive">Применить live</button>
+        <p class="subtle">Подсказка: скопируй URL и вставь в OBS Browser Source.</p>
+      </div>
+
+      <div class="card">
+        <div class="subtle">Live preview (можно добавить в OBS)</div>
+        <div class="preview-shell">
+          <iframe id="previewFrame" class="preview" src="/playlist-overlay.html"></iframe>
+        </div>
+        <div id="obsUrlPreview" class="stat"></div>
+      </div>
+    </div>
+    <div id="copyToast" class="copy-toast">СКОПИРОВАНО!</div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const byId = (id) => document.getElementById(id);
+      const playlistInput = byId("playlistUrl");
+      const volumeInput = byId("volume");
+      const shuffleInput = byId("shuffle");
+      const modeInput = byId("mode");
+      const positionInput = byId("position");
+      const themeInput = byId("theme");
+      const opacityInput = byId("opacity");
+      const showMetaInput = byId("showMeta");
+      const showNoticeInput = byId("showNotice");
+      const autoHideSecInput = byId("autoHideSec");
+      const compactBadgeInput = byId("compactBadge");
+      const visualPresetInput = byId("visualPreset");
+      const copyToast = byId("copyToast");
+      const previewFrame = byId("previewFrame");
+      const obsUrlPreview = byId("obsUrlPreview");
+      let copyToastTimer = null;
+
+      function extractPlaylistId(input) {
+        if (!input) return "";
+        try {
+          const url = new URL(input.trim());
+          return url.searchParams.get("list") || "";
+        } catch {
+          return input.trim();
+        }
+      }
+
+      function gatherConfig() {
+        const playlistId = extractPlaylistId(playlistInput.value);
+        const volume = Math.max(0, Math.min(100, Number(volumeInput.value) || 40));
+        const shuffleBool = shuffleInput.value === "on";
+        const mode = modeInput.value === "minimal" ? "minimal" : "full";
+        const position = positionInput.value === "top" ? "top" : "bottom";
+        const theme = ["blue", "purple", "green", "red"].includes(themeInput.value) ? themeInput.value : "blue";
+        const opacity = Math.max(20, Math.min(95, Number(opacityInput.value) || 75));
+        const showMetaBool = showMetaInput.value === "1";
+        const showNoticeBool = showNoticeInput.value === "1";
+        const autoHideSec = Math.max(0, Math.min(30, Number(autoHideSecInput.value) || 0));
+        const compactBadgeBool = compactBadgeInput.value === "1";
+        const visualPreset = visualPresetInput.value === "clean" ? "clean" : "pro";
+        return {
+          playlistId,
+          payload: {
+            list: playlistId, volume, shuffle: shuffleBool, mode, position, theme, opacity,
+            showMeta: showMetaBool, showNotice: showNoticeBool, autoHideSec, compactBadge: compactBadgeBool, visualPreset
+          }
+        };
+      }
+
+      function buildOverlayUrl(config, forPreview = false) {
+        const p = config.payload;
+        const base = `${location.origin}/playlist-overlay.html?list=${encodeURIComponent(p.list)}&volume=${p.volume}&shuffle=${p.shuffle ? 1 : 0}&mode=${p.mode}&position=${p.position}&theme=${p.theme}&opacity=${p.opacity}&showMeta=${p.showMeta ? 1 : 0}&showNotice=${p.showNotice ? 1 : 0}&autoHideSec=${p.autoHideSec}&compactBadge=${p.compactBadge ? 1 : 0}&visualPreset=${p.visualPreset}`;
+        return forPreview ? `${base}&embed=1` : base;
+      }
+
+      function showCopiedToast(text = "СКОПИРОВАНО!") {
+        copyToast.textContent = text;
+        copyToast.classList.add("show");
+        if (copyToastTimer) clearTimeout(copyToastTimer);
+        copyToastTimer = setTimeout(() => copyToast.classList.remove("show"), 1200);
+      }
+
+      function refreshPreview() {
+        const config = gatherConfig();
+        if (!config.playlistId) return;
+        const url = buildOverlayUrl(config, true);
+        obsUrlPreview.textContent = url;
+        previewFrame.src = url;
+      }
+
+      byId("copyOverlayUrl").addEventListener("click", async () => {
+        const config = gatherConfig();
+        if (!config.playlistId) return alert("Вставь ссылку на YouTube playlist или ID.");
+        socket.emit("playlist:configure", config.payload);
+        const url = buildOverlayUrl(config);
+        try { await navigator.clipboard.writeText(url); }
+        catch {
+          const tempInput = document.createElement("input");
+          tempInput.value = url; document.body.appendChild(tempInput); tempInput.select();
+          document.execCommand("copy"); document.body.removeChild(tempInput);
+        }
+        refreshPreview();
+        localStorage.setItem("obsCopiedMusic", "1");
+        showCopiedToast();
+      });
+
+      byId("applyLive").addEventListener("click", () => {
+        const config = gatherConfig();
+        if (!config.playlistId) return alert("Нужен playlist ID.");
+        socket.emit("playlist:configure", config.payload);
+        refreshPreview();
+        showCopiedToast("ПРИМЕНЕНО");
+      });
+
+      byId("cmdTogglePlay").addEventListener("click", () => socket.emit("playlist:command", { type: "togglePlay" }));
+      byId("cmdNext").addEventListener("click", () => socket.emit("playlist:command", { type: "next" }));
+      byId("cmdPrev").addEventListener("click", () => socket.emit("playlist:command", { type: "prev" }));
+      byId("cmdShow").addEventListener("click", () => socket.emit("playlist:command", { type: "forceShow" }));
+
+      ["input", "change"].forEach((evt) => {
+        [playlistInput, volumeInput, shuffleInput, modeInput, positionInput, themeInput, opacityInput, showMetaInput, showNoticeInput, autoHideSecInput, compactBadgeInput, visualPresetInput]
+          .forEach((el) => el.addEventListener(evt, refreshPreview));
+      });
+
+      socket.on("playlist:state", (data) => {
+        if (!data) return;
+        playlistInput.value = data.list || playlistInput.value;
+        volumeInput.value = data.volume ?? volumeInput.value;
+        shuffleInput.value = data.shuffle ? "on" : "off";
+        modeInput.value = data.mode === "minimal" ? "minimal" : "full";
+        positionInput.value = data.position === "top" ? "top" : "bottom";
+        themeInput.value = ["blue", "purple", "green", "red"].includes(data.theme) ? data.theme : "blue";
+        opacityInput.value = data.opacity ?? opacityInput.value;
+        showMetaInput.value = data.showMeta ? "1" : "0";
+        showNoticeInput.value = data.showNotice ? "1" : "0";
+        autoHideSecInput.value = data.autoHideSec ?? autoHideSecInput.value;
+        compactBadgeInput.value = data.compactBadge ? "1" : "0";
+        visualPresetInput.value = data.visualPreset === "clean" ? "clean" : "pro";
+        refreshPreview();
+      });
+
+      const lang = localStorage.getItem("appLanguage") || "ru";
+      if (lang === "en") {
+        document.title = "LiveFrame - Music";
+        byId("pageTitle").textContent = "Music control deck";
+        byId("copyOverlayUrl").textContent = "Copy OBS URL";
+        byId("applyLive").textContent = "Apply live";
+      }
+
+      function applyTheme() {
+        const theme = localStorage.getItem("appTheme") || "dark";
+        if (theme === "light") {
+          document.documentElement.style.setProperty("--bg", "#eef2f7");
+          document.documentElement.style.setProperty("--text", "#111827");
+          document.documentElement.style.setProperty("--card", "rgba(255, 255, 255, 0.9)");
+          document.documentElement.style.setProperty("--border", "#d1d5db");
+          document.documentElement.style.setProperty("--input-bg", "#ffffff");
+          document.documentElement.style.setProperty("--muted", "#475569");
+        }
+      }
+      applyTheme();
+    </script>
+  </body>
+</html>
