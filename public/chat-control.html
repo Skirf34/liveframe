@@ -86,8 +86,43 @@
             </select>
           </div>
           <div>
+            <label>Авто-фильтр Twitch (запретки/спам)</label>
+            <select id="safeMode">
+              <option value="1">Включен</option>
+              <option value="0">Выключен</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div>
+            <label>Скрыть роли: Viewer</label>
+            <select id="hideViewer"><option value="0">Нет</option><option value="1">Да</option></select>
+          </div>
+          <div>
+            <label>Скрыть роли: Subscriber</label>
+            <select id="hideSubscriber"><option value="0">Нет</option><option value="1">Да</option></select>
+          </div>
+        </div>
+        <div class="grid">
+          <div>
+            <label>Скрыть роли: VIP</label>
+            <select id="hideVip"><option value="0">Нет</option><option value="1">Да</option></select>
+          </div>
+          <div>
+            <label>Скрыть роли: Mod</label>
+            <select id="hideMod"><option value="0">Нет</option><option value="1">Да</option></select>
+          </div>
+        </div>
+
+        <div class="grid">
+          <div>
             <label>Авто-исчезновение сообщения (сек, 0 = выкл)</label>
             <input id="fadeSec" type="number" min="0" max="120" value="0" />
+          </div>
+          <div>
+            <label>Анти-дубль окно (сек)</label>
+            <input id="dedupeWindowSec" type="number" min="0" max="120" value="20" />
           </div>
         </div>
 
@@ -143,7 +178,13 @@
       const fontScaleInput = document.getElementById("fontScale");
       const showTimeInput = document.getElementById("showTime");
       const hideCommandsInput = document.getElementById("hideCommands");
+      const safeModeInput = document.getElementById("safeMode");
+      const hideViewerInput = document.getElementById("hideViewer");
+      const hideSubscriberInput = document.getElementById("hideSubscriber");
+      const hideVipInput = document.getElementById("hideVip");
+      const hideModInput = document.getElementById("hideMod");
       const fadeSecInput = document.getElementById("fadeSec");
+      const dedupeWindowSecInput = document.getElementById("dedupeWindowSec");
       const blockedWordsInput = document.getElementById("blockedWords");
       const hideLinksInput = document.getElementById("hideLinks");
       const animationInput = document.getElementById("animation");
@@ -167,7 +208,13 @@
         const fontScale = Math.max(80, Math.min(180, Number(fontScaleInput.value) || 100));
         const showTime = showTimeInput.value === "1";
         const hideCommands = hideCommandsInput.value === "1";
+        const safeMode = safeModeInput.value === "1";
+        const hideViewer = hideViewerInput.value === "1";
+        const hideSubscriber = hideSubscriberInput.value === "1";
+        const hideVip = hideVipInput.value === "1";
+        const hideMod = hideModInput.value === "1";
         const fadeSec = Math.max(0, Math.min(120, Number(fadeSecInput.value) || 0));
+        const dedupeWindowSec = Math.max(0, Math.min(120, Number(dedupeWindowSecInput.value) || 20));
         const blockedWords = String(blockedWordsInput.value || "").slice(0, 500);
         const hideLinks = hideLinksInput.value === "1";
         const animation = ["rise", "slide", "pop", "none"].includes(animationInput.value) ? animationInput.value : "rise";
@@ -178,11 +225,11 @@
           minLength = maxLength;
           maxLength = t;
         }
-        return { channel, maxMessages, position, theme, fontScale, showTime, hideCommands, fadeSec, blockedWords, hideLinks, animation, minLength, maxLength };
+        return { channel, maxMessages, position, theme, fontScale, showTime, hideCommands, safeMode, hideViewer, hideSubscriber, hideVip, hideMod, dedupeWindowSec, fadeSec, blockedWords, hideLinks, animation, minLength, maxLength };
       }
 
       function buildUrl(cfg) {
-        return `${location.origin}/chat-overlay.html?channel=${encodeURIComponent(cfg.channel)}&max=${cfg.maxMessages}&position=${cfg.position}&theme=${cfg.theme}&fontScale=${cfg.fontScale}&showTime=${cfg.showTime ? "1" : "0"}&hideCommands=${cfg.hideCommands ? "1" : "0"}&fadeSec=${cfg.fadeSec}&blockedWords=${encodeURIComponent(cfg.blockedWords)}&hideLinks=${cfg.hideLinks ? "1" : "0"}&animation=${cfg.animation}&minLength=${cfg.minLength}&maxLength=${cfg.maxLength}`;
+        return `${location.origin}/chat-overlay.html?channel=${encodeURIComponent(cfg.channel)}&max=${cfg.maxMessages}&position=${cfg.position}&theme=${cfg.theme}&fontScale=${cfg.fontScale}&showTime=${cfg.showTime ? "1" : "0"}&hideCommands=${cfg.hideCommands ? "1" : "0"}&safeMode=${cfg.safeMode ? "1" : "0"}&hideViewer=${cfg.hideViewer ? "1" : "0"}&hideSubscriber=${cfg.hideSubscriber ? "1" : "0"}&hideVip=${cfg.hideVip ? "1" : "0"}&hideMod=${cfg.hideMod ? "1" : "0"}&dedupeWindowSec=${cfg.dedupeWindowSec}&fadeSec=${cfg.fadeSec}&blockedWords=${encodeURIComponent(cfg.blockedWords)}&hideLinks=${cfg.hideLinks ? "1" : "0"}&animation=${cfg.animation}&minLength=${cfg.minLength}&maxLength=${cfg.maxLength}`;
       }
 
       document.getElementById("copyOverlay").addEventListener("click", async () => {
@@ -230,7 +277,13 @@
         fontScaleInput.value = s.fontScale ?? fontScaleInput.value;
         showTimeInput.value = s.showTime ? "1" : "0";
         hideCommandsInput.value = s.hideCommands ? "1" : "0";
+        safeModeInput.value = s.safeMode === false ? "0" : "1";
+        hideViewerInput.value = s.hideViewer ? "1" : "0";
+        hideSubscriberInput.value = s.hideSubscriber ? "1" : "0";
+        hideVipInput.value = s.hideVip ? "1" : "0";
+        hideModInput.value = s.hideMod ? "1" : "0";
         fadeSecInput.value = s.fadeSec ?? fadeSecInput.value;
+        dedupeWindowSecInput.value = s.dedupeWindowSec ?? dedupeWindowSecInput.value;
         blockedWordsInput.value = s.blockedWords ?? blockedWordsInput.value;
         hideLinksInput.value = s.hideLinks ? "1" : "0";
         animationInput.value = ["rise", "slide", "pop", "none"].includes(s.animation) ? s.animation : "rise";

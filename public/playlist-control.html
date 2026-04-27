@@ -71,8 +71,8 @@
         <h1 id="pageTitle">Музыкальный пульт</h1>
         <div class="row2">
           <div>
-            <span class="label">YouTube playlist</span>
-            <input id="playlistUrl" placeholder="https://www.youtube.com/playlist?list=..." />
+            <span class="label">YouTube playlist / video URL</span>
+            <input id="playlistUrl" placeholder="https://www.youtube.com/playlist?list=... или https://www.youtube.com/watch?v=..." />
           </div>
           <div>
             <span class="label">Громкость (0-100)</span>
@@ -192,18 +192,28 @@
       const obsUrlPreview = byId("obsUrlPreview");
       let copyToastTimer = null;
 
-      function extractPlaylistId(input) {
-        if (!input) return "";
+      function extractYouTubeSource(input) {
+        const fallback = String(input || "").trim();
+        if (!fallback) return { sourceType: "playlist", id: "" };
         try {
-          const url = new URL(input.trim());
-          return url.searchParams.get("list") || "";
+          const url = new URL(fallback);
+          const listId = url.searchParams.get("list");
+          if (listId) return { sourceType: "playlist", id: listId };
+          const videoId = url.searchParams.get("v");
+          if (videoId) return { sourceType: "video", id: videoId };
+          if (/youtu\.be$/i.test(url.hostname)) {
+            const shortId = url.pathname.replace(/^\/+/, "");
+            if (shortId) return { sourceType: "video", id: shortId };
+          }
+          return { sourceType: "playlist", id: fallback };
         } catch {
-          return input.trim();
+          if (/^[a-zA-Z0-9_-]{11}$/.test(fallback)) return { sourceType: "video", id: fallback };
+          return { sourceType: "playlist", id: fallback };
         }
       }
 
       function gatherConfig() {
-        const playlistId = extractPlaylistId(playlistInput.value);
+        const source = extractYouTubeSource(playlistInput.value);
         const volume = Math.max(0, Math.min(100, Number(volumeInput.value) || 40));
         const shuffleBool = shuffleInput.value === "on";
         const mode = modeInput.value === "minimal" ? "minimal" : "full";
@@ -216,9 +226,10 @@
         const compactBadgeBool = compactBadgeInput.value === "1";
         const visualPreset = visualPresetInput.value === "clean" ? "clean" : "pro";
         return {
-          playlistId,
+          sourceId: source.id,
           payload: {
-            list: playlistId, volume, shuffle: shuffleBool, mode, position, theme, opacity,
+            sourceType: source.sourceType,
+            list: source.id, volume, shuffle: shuffleBool, mode, position, theme, opacity,
             showMeta: showMetaBool, showNotice: showNoticeBool, autoHideSec, compactBadge: compactBadgeBool, visualPreset
           }
         };
@@ -226,7 +237,7 @@
 
       function buildOverlayUrl(config, forPreview = false) {
         const p = config.payload;
-        const base = `${location.origin}/playlist-overlay.html?list=${encodeURIComponent(p.list)}&volume=${p.volume}&shuffle=${p.shuffle ? 1 : 0}&mode=${p.mode}&position=${p.position}&theme=${p.theme}&opacity=${p.opacity}&showMeta=${p.showMeta ? 1 : 0}&showNotice=${p.showNotice ? 1 : 0}&autoHideSec=${p.autoHideSec}&compactBadge=${p.compactBadge ? 1 : 0}&visualPreset=${p.visualPreset}`;
+        const base = `${location.origin}/playlist-overlay.html?sourceType=${encodeURIComponent(p.sourceType || "playlist")}&list=${encodeURIComponent(p.list)}&volume=${p.volume}&shuffle=${p.shuffle ? 1 : 0}&mode=${p.mode}&position=${p.position}&theme=${p.theme}&opacity=${p.opacity}&showMeta=${p.showMeta ? 1 : 0}&showNotice=${p.showNotice ? 1 : 0}&autoHideSec=${p.autoHideSec}&compactBadge=${p.compactBadge ? 1 : 0}&visualPreset=${p.visualPreset}`;
         return forPreview ? `${base}&embed=1` : base;
       }
 
@@ -239,7 +250,7 @@
 
       function refreshPreview() {
         const config = gatherConfig();
-        if (!config.playlistId) return;
+        if (!config.sourceId) return;
         const url = buildOverlayUrl(config, true);
         obsUrlPreview.textContent = url;
         previewFrame.src = url;
@@ -247,7 +258,7 @@
 
       byId("copyOverlayUrl").addEventListener("click", async () => {
         const config = gatherConfig();
-        if (!config.playlistId) return alert("Вставь ссылку на YouTube playlist или ID.");
+        if (!config.sourceId) return alert("Вставь ссылку/ID YouTube playlist или video.");
         socket.emit("playlist:configure", config.payload);
         const url = buildOverlayUrl(config);
         try { await navigator.clipboard.writeText(url); }
@@ -263,7 +274,7 @@
 
       byId("applyLive").addEventListener("click", () => {
         const config = gatherConfig();
-        if (!config.playlistId) return alert("Нужен playlist ID.");
+        if (!config.sourceId) return alert("Нужен YouTube playlist/video ID.");
         socket.emit("playlist:configure", config.payload);
         refreshPreview();
         showCopiedToast("ПРИМЕНЕНО");
@@ -281,6 +292,7 @@
 
       socket.on("playlist:state", (data) => {
         if (!data) return;
+        // sourceType can be playlist or video
         playlistInput.value = data.list || playlistInput.value;
         volumeInput.value = data.volume ?? volumeInput.value;
         shuffleInput.value = data.shuffle ? "on" : "off";

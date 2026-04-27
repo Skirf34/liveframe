@@ -80,17 +80,6 @@
       .text {
         word-break: break-word;
       }
-      .status {
-        position: fixed;
-        left: 12px;
-        top: 12px;
-        background: rgba(15, 23, 42, 0.8);
-        color: #cbd5e1;
-        border: 1px solid rgba(100, 116, 139, 0.35);
-        border-radius: 999px;
-        padding: 6px 10px;
-        font-size: 12px;
-      }
       @keyframes rise {
         from { opacity: 0; transform: translateY(5px); }
         to { opacity: 1; transform: translateY(0); }
@@ -106,18 +95,16 @@
     </style>
   </head>
   <body>
-    <div id="status" class="status">Chat overlay: waiting config...</div>
     <div id="wrap" class="wrap dark"></div>
 
-    <script src="https://unpkg.com/tmi.js@1.8.5/dist/tmi.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script>
       const socket = io();
       const wrap = document.getElementById("wrap");
-      const statusEl = document.getElementById("status");
       const params = new URLSearchParams(location.search);
 
-      let client = null;
+      let twitchSocket = null;
+      let reconnectTimer = null;
       let currentChannel = "";
       let state = {
         channel: (params.get("channel") || "").replace(/^#/, "").toLowerCase(),
@@ -127,6 +114,12 @@
         fontScale: Math.max(80, Math.min(180, Number(params.get("fontScale")) || 100)),
         showTime: params.get("showTime") === "0" ? false : true,
         hideCommands: params.get("hideCommands") === "1",
+        safeMode: params.get("safeMode") === "0" ? false : true,
+        hideViewer: params.get("hideViewer") === "1",
+        hideSubscriber: params.get("hideSubscriber") === "1",
+        hideVip: params.get("hideVip") === "1",
+        hideMod: params.get("hideMod") === "1",
+        dedupeWindowSec: Math.max(0, Math.min(120, Number(params.get("dedupeWindowSec")) || 20)),
         fadeSec: Math.max(0, Math.min(120, Number(params.get("fadeSec")) || 0)),
         blockedWords: decodeURIComponent(params.get("blockedWords") || ""),
         hideLinks: params.get("hideLinks") === "1",
@@ -134,6 +127,7 @@
         minLength: Math.max(1, Math.min(120, Number(params.get("minLength")) || 1)),
         maxLength: Math.max(10, Math.min(500, Number(params.get("maxLength")) || 280))
       };
+      const dedupeMap = new Map();
 
       function escapeHtml(input) {
         return String(input)
@@ -149,6 +143,64 @@
         document.documentElement.style.setProperty("--font-scale", `${state.fontScale}%`);
       }
 
+      function parseIrcTags(rawTags = "") {
+        const tags = {};
+        rawTags.split(";").forEach((part) => {
+          const idx = part.indexOf("=");
+          if (idx < 0) return;
+          const key = part.slice(0, idx);
+          const value = part.slice(idx + 1)
+            .replace(/\\s/g, " ")
+            .replace(/\\:/g, ";")
+            .replace(/\\\\/g, "\\");
+          tags[key] = value;
+        });
+        return tags;
+      }
+
+      function inferRole(tags = {}) {
+        const badges = String(tags.badges || "");
+        if (badges.includes("broadcaster/")) return "broadcaster";
+        if (badges.includes("moderator/") || tags.mod === "1") return "mod";
+        if (badges.includes("vip/")) return "vip";
+        if (badges.includes("subscriber/")) return "subscriber";
+        return "viewer";
+      }
+
+      function parsePrivmsg(line) {
+        const match = line.match(/^@([^ ]+)\s+:([^!]+)![^ ]+\s+PRIVMSG\s+#[^\s]+\s+:(.*)$/);
+        if (!match) return null;
+        const tags = parseIrcTags(match[1]);
+        const userFromPrefix = match[2] || "";
+        return {
+          user: tags["display-name"] || tags.login || userFromPrefix || "viewer",
+          text: match[3] || "",
+          color: tags.color || "#93c5fd",
+          ts: Date.now(),
+          source: "twitch",
+          role: inferRole(tags)
+        };
+      }
+
+      function isLikelyTwitchForbidden(text) {
+        const lower = text.toLowerCase();
+        // Common prohibited patterns (RU/EN profanity, hate slurs, self-harm prompts).
+        const forbiddenPatterns = [
+          /\b(?:n[i1]gg(?:a|er)?|fag(?:got)?|kys|retard(?:ed)?)\b/i,
+          /\b(?:бля(?:дь)?|сук[аи]?|хуй|пизд(?:а|ец|eц)?|еб(?:а|у|ан)|шлюх[аи]?|пид(?:ор|ар)|педик)\b/i
+        ];
+        if (forbiddenPatterns.some((rx) => rx.test(lower))) return true;
+        // Aggressive caps spam
+        const letters = text.replace(/[^a-zа-яё]/gi, "");
+        if (letters.length >= 14) {
+          const upper = letters.replace(/[^A-ZА-ЯЁ]/g, "").length;
+          if (upper / letters.length > 0.75) return true;
+        }
+        // Flood / repeated characters.
+        if (/(.)\1{8,}/i.test(text)) return true;
+        return false;
+      }
+
       function addMessage(message) {
         const textRaw = String(message.text || "");
         if (textRaw.length < state.minLength || textRaw.length > state.maxLength) {
@@ -160,6 +212,9 @@
         if (state.hideLinks && /(https?:\/\/|www\.)/i.test(textRaw)) {
           return;
         }
+        if (state.safeMode && isLikelyTwitchForbidden(textRaw)) {
+          return;
+        }
         const blockList = String(state.blockedWords || "")
           .split(",")
           .map((w) => w.trim().toLowerCase())
@@ -169,12 +224,27 @@
           return;
         }
 
+        const role = message.role || "";
+        if (
+          (state.hideViewer && role === "viewer") ||
+          (state.hideSubscriber && role === "subscriber") ||
+          (state.hideVip && role === "vip") ||
+          (state.hideMod && role === "mod")
+        ) {
+          return;
+        }
+        const dedupeKey = `${String(message.user || "").toLowerCase()}::${textRaw.toLowerCase()}`;
+        const now = Date.now();
+        const prevAt = dedupeMap.get(dedupeKey) || 0;
+        if (state.dedupeWindowSec > 0 && (now - prevAt) < (state.dedupeWindowSec * 1000)) return;
+        dedupeMap.set(dedupeKey, now);
+
         const msg = document.createElement("div");
         msg.className = "msg";
         msg.classList.add(`anim-${state.animation}`);
-        if (message.role === "mod") msg.classList.add("mod");
-        if (message.role === "subscriber") msg.classList.add("subscriber");
-        if (message.role === "vip") msg.classList.add("vip");
+        if (role === "mod" || role === "broadcaster") msg.classList.add("mod");
+        if (role === "subscriber") msg.classList.add("subscriber");
+        if (role === "vip") msg.classList.add("vip");
         const time = new Date(message.ts || Date.now());
         const timeLabel = `${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}`;
 
@@ -186,6 +256,7 @@
           <div class="text">${escapeHtml(textRaw)}</div>
         `;
         wrap.appendChild(msg);
+        socket.emit("chat:ingest");
 
         if (state.fadeSec > 0) {
           const fadeMs = state.fadeSec * 1000;
@@ -205,46 +276,60 @@
 
       async function connectTwitchChannel(channel) {
         if (!channel) {
-          statusEl.textContent = "Chat overlay: укажи channel";
           return;
         }
-        if (client) {
-          try { await client.disconnect(); } catch {}
-          client = null;
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+        if (twitchSocket) {
+          try { twitchSocket.close(); } catch {}
+          twitchSocket = null;
         }
 
         currentChannel = channel;
-        statusEl.textContent = `Chat overlay: connecting #${channel}...`;
+        const nick = `justinfan${Math.floor(Math.random() * 1e9)}`;
+        const ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
+        twitchSocket = ws;
 
-        client = new tmi.Client({
-          connection: { reconnect: true, secure: true },
-          channels: [channel]
+        ws.addEventListener("open", () => {
+          ws.send("CAP REQ :twitch.tv/tags twitch.tv/commands");
+          ws.send(`NICK ${nick}`);
+          ws.send(`JOIN #${channel}`);
         });
 
-        client.on("message", (_channel, tags, text) => {
-          let role = "";
-          if (tags && tags.badges && tags.badges.vip) role = "vip";
-          else if (tags && tags.mod) role = "mod";
-          else if (tags && tags.subscriber) role = "subscriber";
-          addMessage({
-            user: tags["display-name"] || tags.username || "viewer",
-            text,
-            color: tags.color || "#93c5fd",
-            ts: Date.now(),
-            source: "twitch",
-            role
+        ws.addEventListener("message", (event) => {
+          const chunk = String(event.data || "");
+          const lines = chunk.split("\r\n").filter(Boolean);
+          lines.forEach((line) => {
+            if (line.startsWith("PING ")) {
+              ws.send(`PONG ${line.slice(5)}`);
+              return;
+            }
+            if (line.includes(" 001 ")) {
+              socket.emit("runtime:set-health", { key: "twitch", value: "ok" });
+              return;
+            }
+            if (!line.includes(" PRIVMSG ")) return;
+            const parsed = parsePrivmsg(line);
+            if (!parsed) return;
+            addMessage(parsed);
           });
         });
 
-        client.on("connected", () => {
-          statusEl.textContent = `Chat overlay: #${channel}`;
+        ws.addEventListener("error", () => {
+          socket.emit("runtime:set-health", { key: "twitch", value: "error" });
         });
 
-        try {
-          await client.connect();
-        } catch {
-          statusEl.textContent = "Chat overlay: не удалось подключиться";
-        }
+        ws.addEventListener("close", () => {
+          if (twitchSocket !== ws) return;
+          socket.emit("runtime:set-health", { key: "twitch", value: "warn" });
+          reconnectTimer = setTimeout(() => {
+            if (currentChannel === channel) {
+              connectTwitchChannel(channel);
+            }
+          }, 3000);
+        });
       }
 
       function applyState(next) {
@@ -265,6 +350,12 @@
           fontScale: s.fontScale ?? state.fontScale,
           showTime: typeof s.showTime === "boolean" ? s.showTime : state.showTime,
           hideCommands: typeof s.hideCommands === "boolean" ? s.hideCommands : state.hideCommands,
+          safeMode: typeof s.safeMode === "boolean" ? s.safeMode : state.safeMode,
+          hideViewer: typeof s.hideViewer === "boolean" ? s.hideViewer : state.hideViewer,
+          hideSubscriber: typeof s.hideSubscriber === "boolean" ? s.hideSubscriber : state.hideSubscriber,
+          hideVip: typeof s.hideVip === "boolean" ? s.hideVip : state.hideVip,
+          hideMod: typeof s.hideMod === "boolean" ? s.hideMod : state.hideMod,
+          dedupeWindowSec: s.dedupeWindowSec ?? state.dedupeWindowSec,
           fadeSec: s.fadeSec ?? state.fadeSec,
           blockedWords: s.blockedWords ?? state.blockedWords,
           hideLinks: typeof s.hideLinks === "boolean" ? s.hideLinks : state.hideLinks,
@@ -275,12 +366,25 @@
       });
 
       socket.on("chat:message", (m) => addMessage(m || {}));
+      socket.on("chat:now-playing", (p = {}) => {
+        if (!p.title) return;
+        addMessage({
+          user: "music",
+          text: `Now playing: ${p.title}`,
+          color: "#22d3ee",
+          ts: Date.now(),
+          source: "music",
+          role: ""
+        });
+      });
+      socket.on("runtime:emergency", (s = {}) => {
+        const on = Boolean(s.emergencyBlank);
+        document.body.style.opacity = on ? "0" : "1";
+      });
 
       applyUiState();
       if (state.channel) {
         connectTwitchChannel(state.channel);
-      } else {
-        statusEl.textContent = "Chat overlay: waiting channel...";
       }
     </script>
   </body>

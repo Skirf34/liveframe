@@ -77,7 +77,7 @@
       .music-widget.minimal .status-pill {
         display: none;
       }
-      .music-widget.minimal .progress {
+      .music-widget.minimal .neon-wave {
         margin-top: 8px;
       }
       .row {
@@ -138,19 +138,30 @@
         background: rgba(107, 114, 128, 0.2);
         border-color: rgba(107, 114, 128, 0.6);
       }
-      .progress {
+      .neon-wave {
         margin-top: 10px;
         width: 100%;
-        height: 8px;
-        border-radius: 999px;
+        height: 12px;
+        border-radius: 10px;
         overflow: hidden;
-        background: rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.55);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        display: grid;
+        grid-template-columns: repeat(32, 1fr);
+        gap: 2px;
+        padding: 2px;
       }
-      .progress-fill {
-        width: 0%;
-        height: 100%;
-        background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
-        transition: width 0.4s ease;
+      .wave-bar {
+        border-radius: 999px;
+        transform-origin: center;
+        transform: scaleY(0.25);
+        background: linear-gradient(180deg, var(--accent-b), var(--accent-a));
+        box-shadow: 0 0 8px var(--accent-glow);
+        transition: transform 0.15s ease, opacity 0.15s ease;
+        opacity: 0.65;
+      }
+      .wave-bar.playing {
+        opacity: 1;
       }
       .eq {
         margin-top: 10px;
@@ -221,7 +232,7 @@
         <span id="timeLabel">00:00 / 00:00</span>
         <span id="volumeLabel">VOL 40%</span>
       </div>
-      <div class="progress"><div id="progressFill" class="progress-fill"></div></div>
+      <div id="neonWave" class="neon-wave"></div>
       <div id="eq" class="eq"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
     </div>
     <div id="nowPlayingBadge" class="now-playing-badge">Now Playing</div>
@@ -231,6 +242,7 @@
       const socket = io();
       const params = new URLSearchParams(location.search);
       const initialState = {
+        sourceType: params.get("sourceType") === "video" ? "video" : "playlist",
         list: params.get("list") || "",
         volume: Math.max(0, Math.min(100, Number(params.get("volume")) || 40)),
         shuffle: params.get("shuffle") === "1",
@@ -249,7 +261,7 @@
       const statusPillEl = document.getElementById("statusPill");
       const timeLabelEl = document.getElementById("timeLabel");
       const volumeLabelEl = document.getElementById("volumeLabel");
-      const progressFillEl = document.getElementById("progressFill");
+      const neonWaveEl = document.getElementById("neonWave");
       const trackCoverEl = document.getElementById("trackCover");
       const eqEl = document.getElementById("eq");
       const noticeEl = document.querySelector(".notice");
@@ -284,7 +296,7 @@
       }
 
       if (!initialState.list) {
-        document.body.innerHTML = '<div class="notice">Нет playlist ID. Открой через playlist-control.html</div>';
+        document.body.innerHTML = '<div class="notice">Нет YouTube ID. Открой через playlist-control.html</div>';
       } else {
         const tag = document.createElement("script");
         tag.src = "https://www.youtube.com/iframe_api";
@@ -297,6 +309,36 @@
       let hideTimer = null;
       let currentVolume = initialState.volume;
       let activeState = { ...initialState };
+      let lastBroadcastTitle = "";
+      let waveBars = [];
+
+      function buildNeonWaveBars() {
+        if (!neonWaveEl) return;
+        neonWaveEl.innerHTML = "";
+        waveBars = [];
+        for (let i = 0; i < 32; i += 1) {
+          const bar = document.createElement("span");
+          bar.className = "wave-bar";
+          neonWaveEl.appendChild(bar);
+          waveBars.push(bar);
+        }
+      }
+
+      function animateNeonWave(isPlaying, progress = 0) {
+        if (!waveBars.length) return;
+        const t = Date.now() / 220;
+        waveBars.forEach((bar, idx) => {
+          if (!isPlaying) {
+            bar.classList.remove("playing");
+            bar.style.transform = "scaleY(0.2)";
+            return;
+          }
+          bar.classList.add("playing");
+          const progBoost = Math.sin((progress / 100) * Math.PI * 2 + (idx / 7));
+          const v = 0.22 + Math.abs(Math.sin(t + idx * 0.45)) * 0.7 + Math.max(0, progBoost) * 0.12;
+          bar.style.transform = `scaleY(${Math.min(1, v)})`;
+        });
+      }
 
       function formatTime(seconds) {
         if (!Number.isFinite(seconds) || seconds < 0) return "00:00";
@@ -328,13 +370,18 @@
         } else {
           trackTitleEl.classList.remove("marquee");
         }
+        if (title && title !== lastBroadcastTitle) {
+          lastBroadcastTitle = title;
+          socket.emit("playlist:now-playing", { title });
+        }
 
         const current = Number(player.getCurrentTime ? player.getCurrentTime() : 0);
         const duration = Number(player.getDuration ? player.getDuration() : 0);
         const progress = duration > 0 ? Math.min(100, Math.max(0, (current / duration) * 100)) : 0;
 
-        progressFillEl.style.width = `${progress}%`;
         timeLabelEl.textContent = `${formatTime(current)} / ${formatTime(duration)}`;
+        const playerState = player && typeof player.getPlayerState === "function" ? player.getPlayerState() : -1;
+        animateNeonWave(playerState === YT.PlayerState.PLAYING, progress);
         if (activeState.visualPreset !== "clean") {
           const bars = eqEl.querySelectorAll("span");
           bars.forEach((bar, idx) => {
@@ -360,6 +407,7 @@
       }
 
       function onYouTubeIframeAPIReady() {
+        const isVideo = activeState.sourceType === "video";
         player = new YT.Player("player", {
           width: "100%",
           height: "100%",
@@ -370,9 +418,9 @@
             rel: 0,
             playsinline: 1,
             iv_load_policy: 3,
-            listType: "playlist",
-            list: activeState.list
+            ...(isVideo ? { } : { listType: "playlist", list: activeState.list })
           },
+          ...(isVideo ? { videoId: activeState.list } : {}),
           events: {
             onReady: onPlayerReady,
             onStateChange: onPlayerStateChange
@@ -381,6 +429,8 @@
       }
 
       function onPlayerReady(event) {
+        socket.emit("runtime:set-health", { key: "youtube", value: "ok" });
+        buildNeonWaveBars();
         event.target.setVolume(activeState.volume);
         currentVolume = activeState.volume;
         if (activeState.shuffle && typeof event.target.setShuffle === "function") {
@@ -443,14 +493,17 @@
 
       socket.on("playlist:state", (serverState) => {
         if (!serverState || !serverState.list) return;
+        const sourceChanged = (activeState.sourceType || "playlist") !== (serverState.sourceType || "playlist");
         const listChanged = activeState.list && serverState.list !== activeState.list;
         applyLiveUpdate(serverState);
-        if (listChanged && player && typeof player.loadPlaylist === "function") {
-          player.loadPlaylist({
-            listType: "playlist",
-            list: serverState.list
-          });
-          player.playVideo();
+        if ((listChanged || sourceChanged) && player) {
+          if ((serverState.sourceType || "playlist") === "video" && typeof player.loadVideoById === "function") {
+            player.loadVideoById(serverState.list);
+            player.playVideo();
+          } else if (typeof player.loadPlaylist === "function") {
+            player.loadPlaylist({ listType: "playlist", list: serverState.list });
+            player.playVideo();
+          }
         }
       });
 
@@ -472,28 +525,40 @@
           showWidgetTemporarily();
         }
       });
+      socket.on("runtime:emergency", (s = {}) => {
+        const on = Boolean(s.emergencyBlank);
+        document.body.style.opacity = on ? "0" : "1";
+      });
 
       function onPlayerStateChange(event) {
+        if (event.data === YT.PlayerState.UNSTARTED) {
+          socket.emit("runtime:set-health", { key: "youtube", value: "warn" });
+        }
         if (event.data === YT.PlayerState.PLAYING) {
           setStatus("", "PLAYING");
           musicWidgetEl.classList.add("pulse");
           syncWidget();
           showWidgetTemporarily();
+          animateNeonWave(true, 0);
         } else if (event.data === YT.PlayerState.PAUSED) {
           setStatus("paused", "PAUSED");
           musicWidgetEl.classList.remove("pulse");
           syncWidget();
           showWidgetTemporarily();
+          animateNeonWave(false, 0);
         } else if (event.data === YT.PlayerState.BUFFERING) {
           setStatus("paused", "BUFFERING");
           musicWidgetEl.classList.remove("pulse");
           showWidgetTemporarily();
+          animateNeonWave(false, 0);
         } else if (event.data === YT.PlayerState.CUED) {
           setStatus("stopped", "CUED");
           musicWidgetEl.classList.remove("pulse");
+          animateNeonWave(false, 0);
         } else if (event.data === YT.PlayerState.UNSTARTED) {
           setStatus("stopped", "WAITING");
           musicWidgetEl.classList.remove("pulse");
+          animateNeonWave(false, 0);
         }
 
         // If video ends, YouTube playlist should continue itself.
@@ -503,6 +568,7 @@
           musicWidgetEl.classList.remove("pulse");
           player.nextVideo();
           showWidgetTemporarily();
+          animateNeonWave(true, 0);
         }
       }
     </script>

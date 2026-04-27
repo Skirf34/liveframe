@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LiveFrame - Игры</title>
+    <style>
+      :root { --bg:#0b1220; --text:#f8fafc; --card:rgba(15,23,42,.72); --border:#334155; --input-bg:#020617; --muted:#94a3b8; }
+      body { margin:0; font-family:Arial,sans-serif; background:var(--bg); color:var(--text); }
+      .wrap { max-width:1240px; margin:0 auto; padding:20px; display:grid; grid-template-columns:1.2fr .8fr; gap:14px; }
+      .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px; }
+      h1 { margin:0 0 12px; }
+      label { display:block; margin-top:10px; color:var(--muted); font-size:14px; }
+      input,select,button { width:100%; margin-top:6px; margin-bottom:8px; border-radius:10px; border:1px solid var(--border); padding:10px; box-sizing:border-box; font-size:15px; }
+      input,select { background:var(--input-bg); color:var(--text); }
+      button { background:#1d4ed8; color:#fff; cursor:pointer; border:none; }
+      .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+      .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+      .subtle { color:var(--muted); font-size:13px; }
+      .status { margin-top:10px; border-radius:10px; border:1px solid var(--border); padding:10px; font-size:13px; color:var(--muted); }
+      .status.error { border-color:rgba(239,68,68,.45); color:#fca5a5; }
+      .status.ok { border-color:rgba(34,197,94,.45); color:#86efac; }
+      .stats-grid { margin-top:10px; display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+      .pill { border:1px solid var(--border); background:var(--input-bg); border-radius:10px; padding:8px; text-align:center; font-size:12px; }
+      .pill b { display:block; margin-bottom:4px; color:#e2e8f0; font-size:11px; font-weight:600; }
+      .preview-shell { --preview-scale:.62; position:relative; width:100%; aspect-ratio:16/9; border-radius:12px; border:1px solid var(--border); background:#000; overflow:hidden; }
+      .preview { position:absolute; inset:0; border:0; background:#000; width:calc(100% / var(--preview-scale)); height:calc(100% / var(--preview-scale)); transform:scale(var(--preview-scale)); transform-origin:top left; pointer-events:none; }
+      .stat-url { margin-top:10px; background:var(--input-bg); border:1px solid var(--border); border-radius:10px; padding:10px; font-size:12px; color:var(--muted); word-break:break-all; max-height:88px; overflow:auto; }
+      @media (max-width:980px){ .wrap{grid-template-columns:1fr;} .grid3{grid-template-columns:1fr 1fr;} }
+      @media (max-width:700px){ .grid2,.grid3,.stats-grid{grid-template-columns:1fr;} }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Игры · CS2 Faceit</h1>
+        <label>Faceit nickname или ссылка на профиль</label>
+        <input id="nickname" placeholder="например: Ch1bypeLya или https://www.faceit.com/ru/players/Ch1bypeLya" />
+        <p class="subtle">Можно вставить полный URL профиля — ник определится автоматически.</p>
+
+        <div class="grid3">
+          <div><label>Позиция</label><select id="position"><option value="left">Слева</option><option value="right">Справа</option></select></div>
+          <div><label>Тема</label><select id="theme"><option value="dark">Темная</option><option value="glass">Стекло</option><option value="light">Светлая</option></select></div>
+          <div><label>Режим показа</label><select id="displayMode"><option value="full">Вся информация</option><option value="elo-only">Только ELO</option><option value="elo-kd-avg">ELO + K/D + AVG</option><option value="wl-only">Только WINS/LOSSES</option></select></div>
+        </div>
+
+        <div class="grid3">
+          <div>
+            <label>Стиль карточки (12)</label>
+            <select id="stylePreset">
+              <option value="neon-blue">Neon Blue</option><option value="neon-purple">Neon Purple</option><option value="cyber-green">Cyber Green</option><option value="fire-red">Fire Red</option>
+              <option value="sunset">Sunset Orange</option><option value="ice">Ice Cyan</option><option value="gold">Gold</option><option value="pink">Pink Wave</option>
+              <option value="obsidian">Obsidian</option><option value="mint">Mint</option><option value="royal">Royal</option><option value="mono">Monochrome</option>
+            </select>
+          </div>
+          <div><label>Автообновление</label><select id="autoRefreshEnabled"><option value="1">Включено</option><option value="0">Выключено</option></select></div>
+          <div><label>Интервал (сек)</label><select id="autoRefreshSec"><option>10</option><option>15</option><option selected>30</option><option>45</option><option>60</option><option>120</option></select></div>
+        </div>
+
+        <div class="grid2">
+          <button id="refreshStats">Загрузить статистику</button>
+          <button id="applyLive">Применить live</button>
+        </div>
+        <button id="copyOverlay">Скопировать путь для OBS</button>
+        <div id="status" class="status">Статус: ожидание</div>
+
+        <div class="stats-grid">
+          <div class="pill"><b>ELO</b><span id="stElo">0</span></div>
+          <div class="pill"><b>LVL</b><span id="stLevel">0</span></div>
+          <div class="pill"><b>MATCHES</b><span id="stMatches">0</span></div>
+          <div class="pill"><b>WINRATE</b><span id="stWinRate">0%</span></div>
+          <div class="pill"><b>K/D</b><span id="stKd">0.00</span></div>
+          <div class="pill"><b>AVG</b><span id="stAvg">0.00</span></div>
+          <div class="pill"><b>HS%</b><span id="stHs">0%</span></div>
+          <div class="pill"><b>WINS</b><span id="stWins">0</span></div>
+          <div class="pill"><b>LOSSES</b><span id="stLosses">0</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="subtle">Live preview (можно добавить в OBS)</div>
+        <div class="preview-shell"><iframe id="previewFrame" class="preview" src="/game-overlay.html"></iframe></div>
+        <div id="obsUrlPreview" class="stat-url"></div>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const byId = (id) => document.getElementById(id);
+      const nicknameEl = byId("nickname"), positionEl = byId("position"), themeEl = byId("theme");
+      const stylePresetEl = byId("stylePreset"), autoRefreshEnabledEl = byId("autoRefreshEnabled"), autoRefreshSecEl = byId("autoRefreshSec");
+      const displayModeEl = byId("displayMode"), statusEl = byId("status"), previewFrame = byId("previewFrame"), obsUrlPreview = byId("obsUrlPreview");
+      let autoRefreshTimer = null;
+
+      function extractFaceitNickname(input) {
+        const value = String(input || "").trim();
+        const m = value.match(/faceit\.com\/(?:[a-z]{2}\/)?players\/([^/?#]+)/i);
+        return m && m[1] ? decodeURIComponent(m[1]).trim() : value.replace(/^#/, "").trim();
+      }
+      function currentConfig() {
+        return {
+          game: "cs2", provider: "faceit",
+          nickname: extractFaceitNickname(nicknameEl.value),
+          position: positionEl.value === "right" ? "right" : "left",
+          theme: ["dark","glass","light"].includes(themeEl.value) ? themeEl.value : "dark",
+          stylePreset: stylePresetEl.value,
+          displayMode: ["full","elo-only","elo-kd-avg","wl-only"].includes(displayModeEl.value) ? displayModeEl.value : "full",
+          autoRefreshSec: Math.max(10, Math.min(300, Number(autoRefreshSecEl.value) || 30))
+        };
+      }
+      function buildOverlayUrl(cfg, forPreview = false) {
+        const base = `${location.origin}/game-overlay.html?game=cs2&provider=faceit&nickname=${encodeURIComponent(cfg.nickname)}&position=${cfg.position}&theme=${cfg.theme}&stylePreset=${encodeURIComponent(cfg.stylePreset)}&displayMode=${encodeURIComponent(cfg.displayMode)}`;
+        return forPreview ? `${base}&embed=1` : base;
+      }
+      function refreshPreview() {
+        const cfg = currentConfig();
+        const url = buildOverlayUrl(cfg, true);
+        previewFrame.src = url;
+        obsUrlPreview.textContent = buildOverlayUrl(cfg, false);
+      }
+      function renderStats(stats = {}) {
+        byId("stElo").textContent = String(stats.elo || 0);
+        byId("stLevel").textContent = String(stats.level || 0);
+        byId("stMatches").textContent = String(stats.matches || 0);
+        byId("stWinRate").textContent = `${Number(stats.winRate || 0).toFixed(1)}%`;
+        byId("stKd").textContent = Number(stats.kd || 0).toFixed(2);
+        byId("stAvg").textContent = Number(stats.avg || 0).toFixed(2);
+        byId("stHs").textContent = `${Number(stats.hs || 0).toFixed(1)}%`;
+        byId("stWins").textContent = String(stats.wins || 0);
+        byId("stLosses").textContent = String(stats.losses || 0);
+      }
+      function applyConfig() { socket.emit("game:configure", currentConfig()); refreshPreview(); }
+      function triggerRefresh() { const cfg = currentConfig(); if (!cfg.nickname) return; socket.emit("game:refresh", cfg); }
+      function restartAutoRefresh() {
+        if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+        if (autoRefreshEnabledEl.value !== "1") return;
+        const intervalMs = (Math.max(10, Number(autoRefreshSecEl.value) || 30)) * 1000;
+        autoRefreshTimer = setInterval(triggerRefresh, intervalMs);
+      }
+
+      [nicknameEl, positionEl, themeEl, stylePresetEl, displayModeEl].forEach((el) => el.addEventListener("change", applyConfig));
+      nicknameEl.addEventListener("input", applyConfig);
+      autoRefreshEnabledEl.addEventListener("change", restartAutoRefresh);
+      autoRefreshSecEl.addEventListener("change", restartAutoRefresh);
+      byId("refreshStats").addEventListener("click", () => {
+        const cfg = currentConfig();
+        if (!cfg.nickname) return alert("Укажи Faceit nickname или ссылку на профиль.");
+        applyConfig();
+        socket.emit("game:refresh", cfg);
+      });
+      byId("applyLive").addEventListener("click", () => {
+        const cfg = currentConfig();
+        if (!cfg.nickname) return alert("Укажи Faceit nickname или ссылку на профиль.");
+        socket.emit("game:configure", cfg);
+        refreshPreview();
+        statusEl.className = "status ok";
+        statusEl.textContent = "Применено live.";
+      });
+      byId("copyOverlay").addEventListener("click", async () => {
+        const cfg = currentConfig();
+        if (!cfg.nickname) return alert("Укажи Faceit nickname или ссылку на профиль.");
+        applyConfig();
+        const url = buildOverlayUrl(cfg, false);
+        try { await navigator.clipboard.writeText(url); }
+        catch {
+          const tmp = document.createElement("input");
+          tmp.value = url; document.body.appendChild(tmp); tmp.select();
+          document.execCommand("copy"); document.body.removeChild(tmp);
+        }
+        localStorage.setItem("obsCopiedGame", "1");
+        statusEl.className = "status ok";
+        statusEl.textContent = "OBS URL скопирован.";
+      });
+
+      socket.on("game:state", (state) => {
+        if (!state) return;
+        nicknameEl.value = state.nickname || nicknameEl.value;
+        positionEl.value = state.position === "right" ? "right" : "left";
+        themeEl.value = ["dark","glass","light"].includes(state.theme) ? state.theme : "dark";
+        stylePresetEl.value = state.stylePreset || "neon-blue";
+        displayModeEl.value = ["full","elo-only","elo-kd-avg","wl-only"].includes(state.displayMode) ? state.displayMode : "full";
+        autoRefreshSecEl.value = String(state.autoRefreshSec || 30);
+        renderStats(state.stats || {});
+        refreshPreview();
+        if (state.status === "loading") { statusEl.className = "status"; statusEl.textContent = "Загружаю статистику Faceit..."; }
+        else if (state.status === "error") { statusEl.className = "status error"; statusEl.textContent = `Ошибка: ${state.error || "не удалось получить статистику"}`; }
+        else if (state.status === "ready") {
+          statusEl.className = "status ok";
+          const ts = state.updatedAt ? new Date(state.updatedAt).toLocaleTimeString() : "только что";
+          statusEl.textContent = `Готово. Последнее обновление: ${ts}`;
+        } else { statusEl.className = "status"; statusEl.textContent = "Статус: ожидание"; }
+      });
+
+      refreshPreview();
+      restartAutoRefresh();
+    </script>
+  </body>
+</html>

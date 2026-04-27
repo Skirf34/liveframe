@@ -1,10 +1,10 @@
 # LiveFrame
 
-LiveFrame is a desktop app for streamers: music + Twitch chat overlays with live controls for OBS.
+LiveFrame is a desktop app for streamers: music, Twitch chat, and game stats overlays with live controls for OBS.
 
 ## What You Get
 
-- Music and chat controls in one app
+- Music, chat, and game stats controls in one app
 - First-run wizard and pre-stream checklist
 - One-click copy of OBS Browser Source URLs
 - Dark and light theme support
@@ -28,13 +28,15 @@ No installer is required.
 
 1. Open `Music` tab in LiveFrame and click copy OBS URL.
 2. Open `Chat` tab and copy OBS URL.
-3. In OBS, add both links as Browser Sources.
+3. Open `Games` tab and copy game stats OBS URL.
+4. In OBS, add all copied links as Browser Sources.
 
 ## First Launch Checklist
 
 - Set your YouTube playlist
 - Set your Twitch channel (without `#`)
-- Copy both OBS URLs and paste them into OBS
+- Set Faceit nickname in `Games` tab
+- Copy all OBS URLs and paste them into OBS
 
 ## FAQ
 
@@ -43,6 +45,9 @@ A: Yes. Click "More info" and run anyway.
 
 **Q: Do I need to install anything else?**  
 A: No, just extract and run `LiveFrame.exe`.
+
+**Q: How do I show CS2 Faceit stats?**  
+A: Open `Games`, set your Faceit nickname, add your Faceit API key, click refresh, then copy the OBS URL.
 
 **Q: Where are my app settings stored?**  
 A: In `liveframe-settings.json` near the app runtime folder.

@@ -63,6 +63,16 @@
         margin-left: auto;
         font-size: 13px;
       }
+      .health-pill {
+        font-size: 12px;
+        border-radius: 999px;
+        padding: 6px 9px;
+        border: 1px solid var(--border);
+        background: var(--btn-bg);
+      }
+      .health-ok { color: #22c55e; }
+      .health-warn { color: #f59e0b; }
+      .health-error { color: #ef4444; }
       #viewFrame {
         width: 100%;
         height: calc(100vh - 56px);
@@ -103,8 +113,21 @@
       <div class="tabs">
         <button id="tabMusic" class="tab-btn active">Музыка</button>
         <button id="tabChat" class="tab-btn">Чат</button>
+        <button id="tabGames" class="tab-btn">Игры</button>
       </div>
       <button id="openChecklist" class="tool-btn">Чеклист перед стримом</button>
+      <button id="goLiveBtn" class="tool-btn">Go Live</button>
+      <button id="pauseBtn" class="tool-btn">Pause</button>
+      <button id="endBtn" class="tool-btn">End</button>
+      <button id="emergencyBtn" class="tool-btn">Blank</button>
+      <button id="langToggle" class="tool-btn">RU/EN</button>
+      <button id="savePresetBtn" class="tool-btn">Save Preset</button>
+      <button id="loadPresetBtn" class="tool-btn">Load Preset</button>
+      <button id="exportBtn" class="tool-btn">Export</button>
+      <button id="importBtn" class="tool-btn">Import</button>
+      <button id="diagBtn" class="tool-btn">Diagnostics</button>
+      <button id="updateBtn" class="tool-btn">Update?</button>
+      <span id="healthFaceit" class="health-pill">Faceit: ?</span>
       <button id="themeToggle" class="tool-btn">🌙</button>
     </div>
     <iframe id="viewFrame" src="/playlist-control.html"></iframe>
@@ -140,7 +163,8 @@
         <h3>Проверка перед эфиром</h3>
         <div id="check1" class="checklist-item warn">1) Музыка: playlist не задан</div>
         <div id="check2" class="checklist-item warn">2) Чат: канал не задан</div>
-        <div id="check3" class="checklist-item warn">3) OBS: URL еще не скопированы</div>
+        <div id="check3" class="checklist-item warn">3) Игры: ник Faceit не задан</div>
+        <div id="check4" class="checklist-item warn">4) OBS: URL еще не скопированы</div>
         <div class="actions">
           <button id="checkClose" class="secondary">Закрыть</button>
           <button id="checkRefresh">Обновить</button>
@@ -154,8 +178,21 @@
       const frame = document.getElementById("viewFrame");
       const tabMusic = document.getElementById("tabMusic");
       const tabChat = document.getElementById("tabChat");
+      const tabGames = document.getElementById("tabGames");
       const openChecklist = document.getElementById("openChecklist");
       const themeToggle = document.getElementById("themeToggle");
+      const goLiveBtn = document.getElementById("goLiveBtn");
+      const pauseBtn = document.getElementById("pauseBtn");
+      const endBtn = document.getElementById("endBtn");
+      const emergencyBtn = document.getElementById("emergencyBtn");
+      const langToggle = document.getElementById("langToggle");
+      const healthFaceit = document.getElementById("healthFaceit");
+      const savePresetBtn = document.getElementById("savePresetBtn");
+      const loadPresetBtn = document.getElementById("loadPresetBtn");
+      const exportBtn = document.getElementById("exportBtn");
+      const importBtn = document.getElementById("importBtn");
+      const diagBtn = document.getElementById("diagBtn");
+      const updateBtn = document.getElementById("updateBtn");
       function applyTheme(theme) {
         const dark = theme !== "light";
         if (dark) {
@@ -196,9 +233,12 @@
         applyTheme(next);
         frame.src = frame.src;
       });
-      const tabs = [tabMusic, tabChat];
+      const tabs = [tabMusic, tabChat, tabGames];
       let playlistState = null;
       let chatState = null;
+      let gameState = null;
+      let runtimeState = null;
+      let emergencyOn = false;
 
       function setActive(tab) {
         tabs.forEach((el) => el.classList.remove("active"));
@@ -213,9 +253,87 @@
         frame.src = "/chat-control.html";
         setActive(tabChat);
       });
+      tabGames.addEventListener("click", () => {
+        frame.src = "/game-control.html";
+        setActive(tabGames);
+      });
       openChecklist.addEventListener("click", () => {
         document.getElementById("checklistBackdrop").classList.add("show");
         refreshChecklist();
+      });
+      goLiveBtn.addEventListener("click", () => socket.emit("runtime:stream-action", { action: "go-live" }));
+      pauseBtn.addEventListener("click", () => {
+        if (runtimeState && runtimeState.streamMode === "paused") socket.emit("runtime:stream-action", { action: "resume" });
+        else socket.emit("runtime:stream-action", { action: "pause" });
+      });
+      endBtn.addEventListener("click", () => socket.emit("runtime:stream-action", { action: "end-stream" }));
+      emergencyBtn.addEventListener("click", () => {
+        emergencyOn = !emergencyOn;
+        socket.emit("runtime:stream-action", { action: emergencyOn ? "emergency-on" : "emergency-off" });
+      });
+      langToggle.addEventListener("click", () => {
+        const current = localStorage.getItem("appLanguage") || "ru";
+        const next = current === "ru" ? "en" : "ru";
+        localStorage.setItem("appLanguage", next);
+        location.reload();
+      });
+      savePresetBtn.addEventListener("click", () => {
+        const name = prompt("Название пресета:", "preset-1");
+        if (!name) return;
+        const data = { playlist: playlistState, chat: chatState, game: gameState, theme: localStorage.getItem("appTheme") || "dark" };
+        localStorage.setItem(`preset:${name}`, JSON.stringify(data));
+        alert("Preset saved.");
+      });
+      loadPresetBtn.addEventListener("click", () => {
+        const name = prompt("Какой пресет загрузить?", "preset-1");
+        if (!name) return;
+        const raw = localStorage.getItem(`preset:${name}`);
+        if (!raw) return alert("Preset not found.");
+        try {
+          const p = JSON.parse(raw);
+          if (p.playlist) socket.emit("playlist:configure", p.playlist);
+          if (p.chat) socket.emit("chat:configure", p.chat);
+          if (p.game) socket.emit("game:configure", p.game);
+          if (p.theme) { localStorage.setItem("appTheme", p.theme); applyTheme(p.theme); }
+        } catch {}
+      });
+      exportBtn.addEventListener("click", async () => {
+        const payload = { playlist: playlistState, chat: chatState, game: gameState, runtime: runtimeState, appTheme: localStorage.getItem("appTheme") || "dark" };
+        try { await navigator.clipboard.writeText(JSON.stringify(payload)); alert("Config JSON copied to clipboard."); }
+        catch { alert("Cannot access clipboard."); }
+      });
+      importBtn.addEventListener("click", () => {
+        const raw = prompt("Вставь JSON конфига:");
+        if (!raw) return;
+        try {
+          const p = JSON.parse(raw);
+          if (p.playlist) socket.emit("playlist:configure", p.playlist);
+          if (p.chat) socket.emit("chat:configure", p.chat);
+          if (p.game) socket.emit("game:configure", p.game);
+          if (p.runtime && p.runtime.scenes) socket.emit("runtime:set-scenes", p.runtime.scenes);
+          if (p.appTheme) { localStorage.setItem("appTheme", p.appTheme); applyTheme(p.appTheme); }
+        } catch { alert("Invalid JSON."); }
+      });
+      diagBtn.addEventListener("click", () => {
+        const lines = [
+          `playlist: ${playlistState && playlistState.list ? "ok" : "missing"}`,
+          `chat channel: ${chatState && chatState.channel ? "ok" : "missing"}`,
+          `faceit nickname: ${gameState && gameState.nickname ? "ok" : "missing"}`,
+          `faceit health: ${(runtimeState && runtimeState.health && runtimeState.health.faceit) || "unknown"}`,
+          `stream mode: ${(runtimeState && runtimeState.streamMode) || "idle"}`,
+          `emergency: ${runtimeState && runtimeState.emergencyBlank ? "ON" : "OFF"}`
+        ];
+        alert(lines.join("\n"));
+      });
+      updateBtn.addEventListener("click", async () => {
+        try {
+          const r = await fetch("https://api.github.com/repos/Skirf34/liveframe/releases/latest");
+          if (!r.ok) return alert("Не удалось проверить обновления.");
+          const j = await r.json();
+          alert(`Latest release: ${j.tag_name || "unknown"}`);
+        } catch {
+          alert("Ошибка сети при проверке обновлений.");
+        }
       });
 
       function closeBackdrop(id) {
@@ -254,28 +372,48 @@
         const c1 = document.getElementById("check1");
         const c2 = document.getElementById("check2");
         const c3 = document.getElementById("check3");
+        const c4 = document.getElementById("check4");
         const hasPlaylist = Boolean(playlistState && playlistState.list);
         const hasChannel = Boolean(chatState && chatState.channel);
+        const hasFaceitNick = Boolean(gameState && gameState.nickname);
         const copiedMusic = localStorage.getItem("obsCopiedMusic") === "1";
         const copiedChat = localStorage.getItem("obsCopiedChat") === "1";
+        const copiedGame = localStorage.getItem("obsCopiedGame") === "1";
         c1.textContent = hasPlaylist ? "1) Музыка: playlist готов" : "1) Музыка: playlist не задан";
         c1.className = `checklist-item ${hasPlaylist ? "ok" : "warn"}`;
         c2.textContent = hasChannel ? "2) Чат: канал готов" : "2) Чат: канал не задан";
         c2.className = `checklist-item ${hasChannel ? "ok" : "warn"}`;
-        const hasObs = copiedMusic && copiedChat;
-        c3.textContent = hasObs ? "3) OBS: ссылки скопированы" : "3) OBS: скопируй URL из вкладок Музыка и Чат";
-        c3.className = `checklist-item ${hasObs ? "ok" : "warn"}`;
+        c3.textContent = hasFaceitNick ? "3) Игры: Faceit nickname задан" : "3) Игры: ник Faceit не задан";
+        c3.className = `checklist-item ${hasFaceitNick ? "ok" : "warn"}`;
+        const hasObs = copiedMusic && copiedChat && copiedGame;
+        c4.textContent = hasObs ? "4) OBS: ссылки скопированы" : "4) OBS: скопируй URL из вкладок Музыка, Чат и Игры";
+        c4.className = `checklist-item ${hasObs ? "ok" : "warn"}`;
       }
 
       socket.on("playlist:state", (s) => { playlistState = s; });
       socket.on("chat:state", (s) => { chatState = s; });
+      socket.on("game:state", (s) => { gameState = s; });
+      socket.on("runtime:state", (s) => {
+        runtimeState = s;
+        const faceitStatus = (s && s.health && s.health.faceit) || "unknown";
+        healthFaceit.textContent = `Faceit: ${faceitStatus}`;
+        healthFaceit.className = "health-pill";
+        if (faceitStatus === "ok") healthFaceit.classList.add("health-ok");
+        else if (faceitStatus === "warn" || faceitStatus === "unknown") healthFaceit.classList.add("health-warn");
+        else healthFaceit.classList.add("health-error");
+        pauseBtn.textContent = s && s.streamMode === "paused" ? "Resume" : "Pause";
+      });
 
       const lang = localStorage.getItem("appLanguage") || "ru";
       if (lang === "en") {
         document.title = "LiveFrame";
         tabMusic.textContent = "Music";
         tabChat.textContent = "Chat";
+        tabGames.textContent = "Games";
         openChecklist.textContent = "Pre-stream checklist";
+        goLiveBtn.textContent = "Go Live";
+        endBtn.textContent = "End";
+        emergencyBtn.textContent = "Blank";
       }
       applyTheme(localStorage.getItem("appTheme") || "dark");
 
